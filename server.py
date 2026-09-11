@@ -196,6 +196,31 @@ def init_db():
       payload_json TEXT,
       created_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS public_people(
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      title TEXT,
+      company TEXT,
+      location TEXT,
+      profile_url TEXT,
+      summary TEXT,
+      skills_json TEXT DEFAULT '[]',
+      first_seen_at TEXT NOT NULL,
+      last_updated_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_public_people_url on public_people(profile_url) WHERE profile_url IS NOT NULL;
+    CREATE TABLE IF NOT EXISTS public_person_sources(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      public_person_id TEXT NOT NULL,
+      source_type TEXT NOT NULL,
+      source_url TEXT,
+      source_provider TEXT,
+      snippet TEXT,
+      query TEXT,
+      discovery_round INTEGER,
+      cached_at TEXT NOT NULL,
+      FOREIGN KEY(public_person_id) REFERENCES public_people(id) ON DELETE CASCADE
+    );
     ''')
     # Backward-compatible run-level sourcing constraints.
     run_cols={row['name'] for row in con.execute('PRAGMA table_info(runs)').fetchall()}
@@ -203,6 +228,17 @@ def init_db():
         con.execute('ALTER TABLE runs ADD COLUMN location TEXT')
     if 'work_setup' not in run_cols:
         con.execute('ALTER TABLE runs ADD COLUMN work_setup TEXT')
+    # Backward-compatible public profile cache columns (kept separate from internal_pool).
+    public_people_cols={row['name'] for row in con.execute('PRAGMA table_info(public_people)').fetchall()}
+    if 'skills_json' not in public_people_cols:
+        con.execute("ALTER TABLE public_people ADD COLUMN skills_json TEXT DEFAULT '[]'")
+    if 'summary' not in public_people_cols:
+        con.execute('ALTER TABLE public_people ADD COLUMN summary TEXT')
+    public_person_sources_cols={row['name'] for row in con.execute('PRAGMA table_info(public_person_sources)').fetchall()}
+    if 'source_provider' not in public_person_sources_cols:
+        con.execute('ALTER TABLE public_person_sources ADD COLUMN source_provider TEXT')
+    if 'discovery_round' not in public_person_sources_cols:
+        con.execute('ALTER TABLE public_person_sources ADD COLUMN discovery_round INTEGER')
     con.commit(); con.close()
 
 # ---------------- agent / semi-engine ----------------
@@ -434,6 +470,64 @@ def internal_search(con,recruiter_key,query,limit=12):
         })
     return hits
 
+# ---------------- public profile cache (public_web / github reuse) ----------------
+# This cache is intentionally separate from internal_pool: internal_pool is recruiter-owned
+# private data, while public_people only stores what was already discovered from public
+# sources (public_web, github) so future runs can reuse it instead of re-querying providers.
+def public_graph_search(con,query,limit=10):
+    rows=con.execute('select * from public_people where profile_url is not null and profile_url<>\'\'').fetchall()
+    q=set(tokens(query))
+    scored=[]
+    for r in rows:
+        text=' '.join([r['name'],r['title'] or '',r['company'] or '',r['location'] or '',r['summary'] or '',' '.join(jload(r['skills_json'],[]) or [])])
+        tt=set(tokens(text))
+        overlap=len(q & tt)
+        phrase_bonus=2 if clean_text(query).lower() in text.lower() else 0
+        s=overlap+phrase_bonus
+        if s>0: scored.append((s,r))
+    scored.sort(key=lambda x:(x[0],x[1]['last_updated_at']),reverse=True)
+    hits=[]
+    for score,r in scored[:limit]:
+        hits.append({
+          'name':r['name'],'title':r['title'] or '','company':r['company'] or '','location':r['location'] or '',
+          'profile_url':r['profile_url'] or '','summary':r['summary'] or '','skills':jload(r['skills_json'],[]) or [],
+          'source_type':'public_cache','source_url':r['profile_url'] or '',
+          'source_title':f"{r['name']} · Public profile cache",
+          'snippet':r['summary'] or 'Cached from a previous public discovery','query':query,'discovery_score':score
+        })
+    return hits
+
+def upsert_public_person(con,hit,source_type,source_url,source_provider='',query='',discovery_round=1):
+    # Only public_web / github discoveries are eligible for caching; internal_pool must never
+    # be written here.
+    if source_type not in ('public_web','github'): return None
+    url=clean_text(hit.get('profile_url',''))
+    if not url: return None
+    pid=canonical_key(hit)
+    ts=now()
+    skills=hit.get('skills') or []
+    con.execute('''insert into public_people(id,name,title,company,location,profile_url,summary,skills_json,first_seen_at,last_updated_at)
+      values(?,?,?,?,?,?,?,?,?,?)
+      on conflict(id) do update set
+      name=excluded.name,
+      title=coalesce(nullif(excluded.title,\'\'),public_people.title),
+      company=coalesce(nullif(excluded.company,\'\'),public_people.company),
+      location=coalesce(nullif(excluded.location,\'\'),public_people.location),
+      profile_url=excluded.profile_url,
+      summary=coalesce(nullif(excluded.summary,\'\'),public_people.summary),
+      skills_json=excluded.skills_json,
+      last_updated_at=excluded.last_updated_at''',
+      (pid,clean_text(hit.get('name','')) or 'Public web result',clean_text(hit.get('title','')),clean_text(hit.get('company','')),
+       clean_text(hit.get('location','')),url,clean_text(hit.get('summary','')),jdump(skills),ts,ts))
+    src_url=clean_text(source_url or hit.get('source_url',''))
+    exists=con.execute('select 1 from public_person_sources where public_person_id=? and source_type=? and coalesce(source_url,\'\')=?',
+      (pid,source_type,src_url)).fetchone()
+    if not exists:
+        con.execute('''insert into public_person_sources(public_person_id,source_type,source_url,source_provider,snippet,query,discovery_round,cached_at)
+          values(?,?,?,?,?,?,?,?)''',
+          (pid,source_type,src_url,clean_text(source_provider),clean_text(hit.get('snippet',''))[:2500],clean_text(query)[:1000],discovery_round,ts))
+    return pid
+
 def parse_web_identity(title,url,snippet):
     raw=re.sub(r'\s+\|\s+LinkedIn.*$','',title or '',flags=re.I)
     parts=[clean_text(x) for x in re.split(r'\s+[\-|–|—|·]\s+',raw) if clean_text(x)]
@@ -573,6 +667,25 @@ def execute_discovery(run_id, adapters, include_locator=True, per_query_limit=8,
             queries=queries+(plan.get('profile_locator_queries') or [])
         for query in list(dict.fromkeys(queries)):
             if created>=max_new_candidates: break
+            # Reuse previously-cached public discoveries (public_web / github only) before
+            # spending a live provider query. internal_pool is never read from or written to
+            # this cache.
+            if created<max_new_candidates and ({'public_web','github'} & set(adapter_order)):
+                cache_start=time.time(); cache_err=''; cache_status='OK'
+                try:
+                    cache_hits=public_graph_search(con,query,per_query_limit)
+                except Exception as e:
+                    cache_status='ERROR'; cache_err=str(e)[:800]; cache_hits=[]
+                    errors.append({'adapter':'public_cache','query':query,'error':cache_err})
+                cache_duration=int((time.time()-cache_start)*1000)
+                con.execute('insert into discovery_queries(run_id,search_round,adapter,query,status,hits,error,duration_ms,created_at) values(?,?,?,?,?,?,?,?,?)',
+                  (run_id,int(rd.get('round') or 1),'public_cache',query,cache_status,len(cache_hits),cache_err,cache_duration,now()))
+                for hit in cache_hits:
+                    total_hits+=1
+                    _,is_new=stage_hit(con,run,criteria,hit,int(rd.get('round') or 1))
+                    if is_new: created+=1
+                    else: merged+=1
+                    if created>=max_new_candidates: break
             for adapter in adapter_order:
                 if created>=max_new_candidates: break
                 start=time.time(); status='OK'; err=''; hits=[]
@@ -594,6 +707,11 @@ def execute_discovery(run_id, adapters, include_locator=True, per_query_limit=8,
                     _,is_new=stage_hit(con,run,criteria,hit,int(rd.get('round') or 1))
                     if is_new: created+=1
                     else: merged+=1
+                    if adapter in ('public_web','github'):
+                        try:
+                            upsert_public_person(con,hit,adapter,hit.get('source_url',''),hit.get('provider','') or ('github' if adapter=='github' else ''),query,int(rd.get('round') or 1))
+                        except Exception:
+                            pass
                     if created>=max_new_candidates: break
     con.execute("update runs set status='OPERATOR_REVIEW',updated_at=? where id=?",(now(),run_id))
     log_event(con,run_id,'engine','DISCOVERY_COMPLETED',{'adapters':adapter_order,'created':created,'merged':merged,'hits':total_hits,'errors':errors[:10]})
