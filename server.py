@@ -197,21 +197,26 @@ def init_db():
       created_at TEXT NOT NULL
     );
     ''')
+    # Backward-compatible run-level sourcing constraints.
+    run_cols={row['name'] for row in con.execute('PRAGMA table_info(runs)').fetchall()}
+    if 'location' not in run_cols:
+        con.execute('ALTER TABLE runs ADD COLUMN location TEXT')
+    if 'work_setup' not in run_cols:
+        con.execute('ALTER TABLE runs ADD COLUMN work_setup TEXT')
     con.commit(); con.close()
 
 # ---------------- agent / semi-engine ----------------
-def compile_brief(role, brief, context=''):
+def compile_brief(role, brief, context='', location='', work_setup=''):
     text=(brief+' '+context).lower()
     must=[]; signals=[]; equivalents=[]; verify=[]; exclusions=[]
     m=re.search(r'(?:at least|minimum(?: of)?|min\.?|minimum)\s+(\d+)\+?\s+years?', text)
     if not m: m=re.search(r'(\d+)\+\s+years?', text)
     if m: must.append(f"{m.group(1)}+ years of relevant experience")
-    loc_target=''
-    for loc in ['panama','costa rica','colombia','mexico','united states','usa','uk','united kingdom','spain','canada','latam','latin america']:
-        if loc in text:
-            loc_target=loc.title(); break
-    if loc_target:
-        must.append(f'Location / work setup compatible with {loc_target}')
+    location=clean_text(location)
+    work_setup=clean_text(work_setup)
+    if location:
+        setup_suffix=f' ({work_setup})' if work_setup else ''
+        must.append(f'Location / work setup compatible with {location}{setup_suffix}')
     elif any(k in text for k in ['based in','location','locally','onsite','on-site','hybrid','remote']):
         must.append('Location / work setup compatible with the role')
     signal_map=[
@@ -241,35 +246,36 @@ def compile_brief(role, brief, context=''):
     return {'must':must,'signals':signals,'equivalent_titles':equivalents,'verify':verify,'exclusions':exclusions}
 
 def extract_location_hint(text):
-    # intentionally conservative: known places in the brief/context are treated as hints, not requirements unless criteria says so
+    # Legacy fallback for older runs that predate explicit location fields.
     text=(text or '').lower()
     for loc in ['panama','costa rica','colombia','mexico','united states','usa','uk','united kingdom','spain','canada','latam','latin america']:
         if loc in text: return loc.title()
     return ''
 
-def build_search_plan(criteria, role, brief='', context=''):
+def build_search_plan(criteria, role, brief='', context='', location='', work_setup=''):
     eq=[x for x in criteria.get('equivalent_titles',[]) if 'Adjacent titles' not in x]
     signals=criteria.get('signals',[])[:4]
-    location=extract_location_hint(brief+' '+context)
+    location=clean_text(location) or extract_location_hint(brief+' '+context)
+    work_setup=clean_text(work_setup)
+    location_term=clean_text(f'{location} {work_setup}')
     signal_terms=[' '.join(tokens(s)[:2]) for s in signals if tokens(s)]
     rounds=[]
     q1=[]
     for t in eq[:3] or [role]:
         suffix=' '.join(signal_terms[:2])
-        q=clean_text(f'"{t}" {suffix} {location}')
+        q=clean_text(f'"{t}" {suffix} {location_term}')
         q1.append(q)
     rounds.append({'round':1,'strategy':'Narrow evidence search','queries':q1})
-    q2=[clean_text(f'"{t}" {location}') for t in (eq[:5] or [role])]
+    q2=[clean_text(f'"{t}" {location_term}') for t in (eq[:5] or [role])]
     rounds.append({'round':2,'strategy':'Relax supporting keywords','queries':q2})
     r_tokens=tokens(role)
     broad=' '.join(r_tokens[-2:] or r_tokens or [role])
-    q3=[clean_text(f'{broad} {location}'), clean_text(f'{broad} {signal_terms[0] if signal_terms else ""} {location}')]
+    q3=[clean_text(f'{broad} {location_term}'), clean_text(f'{broad} {signal_terms[0] if signal_terms else ""} {location_term}')]
     rounds.append({'round':3,'strategy':'Broaden adjacent titles','queries':list(dict.fromkeys(q3))})
-    # locator queries only use search-engine indexes; the app never logs into or scrapes LinkedIn itself.
     locator=[]
     for t in eq[:3] or [role]:
-        locator.append(clean_text(f'site:linkedin.com/in "{t}" {location}'))
-    return {'rounds':rounds,'profile_locator_queries':locator,'location_hint':location}
+        locator.append(clean_text(f'site:linkedin.com/in "{t}" {location_term}'))
+    return {'rounds':rounds,'profile_locator_queries':locator,'location_hint':location,'work_setup':work_setup}
 
 def tri_status(candidate_text, criterion):
     ct=(candidate_text or '').lower(); cr=(criterion or '').lower()
@@ -636,7 +642,8 @@ def run_payload(run_id, include_private=False):
     dec={x['candidate_id']:dict(x) for x in con.execute('select * from decisions where run_id=?',(run_id,)).fetchall()}
     pipe={x['candidate_id']:dict(x) for x in con.execute('select * from pipeline where run_id=?',(run_id,)).fetchall()}
     plan=jload(r['search_plan_json'],{}) or {}
-    out={'id':r['id'],'recruiter_name':r['recruiter_name'],'recruiter_key':r['recruiter_key'],'role':r['role'],'brief':r['brief'],'context':r['context'],
+    out={'id':r['id'],'recruiter_name':r['recruiter_name'],'recruiter_key':r['recruiter_key'],'role':r['role'],'location':r['location'] or '',
+      'work_setup':r['work_setup'] or '','brief':r['brief'],'context':r['context'],
       'criteria':jload(r['criteria_json'],{}),'search_plan':plan,'status':r['status'],'created_at':r['created_at'],'updated_at':r['updated_at'],'published_at':r['published_at'],'candidates':[]}
     for c in cand_rows:
         if not include_private and not c['published']: continue
@@ -704,12 +711,13 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         u=urlparse(self.path); path=u.path; qs=parse_qs(u.query); data=self.body()
         if path=='/api/runs':
-            role=clean_text(data.get('role')); brief=clean_text(data.get('brief')); context=clean_text(data.get('context')); name=clean_text(data.get('recruiter_name'))
-            if not role or not brief: return self.send_json({'error':'role and brief required'},400)
+            role=clean_text(data.get('role')); location=clean_text(data.get('location')); work_setup=clean_text(data.get('work_setup')); brief=clean_text(data.get('brief')); context=clean_text(data.get('context')); name=clean_text(data.get('recruiter_name'))
+            if work_setup not in ['On-site','Hybrid','Remote']: work_setup=''
+            if not role or not location or not work_setup or not brief: return self.send_json({'error':'role, location, work setup and brief required'},400)
             rid='run_'+secrets.token_hex(6); rtok=secrets.token_urlsafe(20); rkey=slug(name) if name else 'anon-'+secrets.token_hex(4)
-            criteria=compile_brief(role,brief,context); plan=build_search_plan(criteria,role,brief,context); ts=now()
-            con=db(); con.execute('''insert into runs(id,recruiter_token,recruiter_name,recruiter_key,role,brief,context,criteria_json,search_plan_json,status,created_at,updated_at,published_at)
-              values(?,?,?,?,?,?,?,?,?,?,?,?,?)''',(rid,rtok,name,rkey,role,brief,context,jdump(criteria),jdump(plan),'OPERATOR_REVIEW',ts,ts,None));
+            criteria=compile_brief(role,brief,context,location,work_setup); plan=build_search_plan(criteria,role,brief,context,location,work_setup); ts=now()
+            con=db(); con.execute('''insert into runs(id,recruiter_token,recruiter_name,recruiter_key,role,location,work_setup,brief,context,criteria_json,search_plan_json,status,created_at,updated_at,published_at)
+              values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',(rid,rtok,name,rkey,role,location,work_setup,brief,context,jdump(criteria),jdump(plan),'OPERATOR_REVIEW',ts,ts,None));
             log_event(con,rid,'recruiter','BRIEF_SUBMITTED',{}); log_event(con,rid,'engine','CRITERIA_COMPILED',criteria); con.commit(); con.close()
             return self.send_json({'id':rid,'token':rtok,'status':'OPERATOR_REVIEW'},201)
         if path=='/api/admin/internal-pool/import':
@@ -729,9 +737,9 @@ class Handler(BaseHTTPRequestHandler):
         if m:
             if not self.admin_ok(qs): return self.send_json({'error':'unauthorized'},401)
             rid=m.group(1); criteria=data.get('criteria') or {}
-            con=db(); r=con.execute('select role,brief,context from runs where id=?',(rid,)).fetchone()
+            con=db(); r=con.execute('select role,location,work_setup,brief,context from runs where id=?',(rid,)).fetchone()
             if not r: con.close(); return self.send_json({'error':'not found'},404)
-            plan=build_search_plan(criteria,r['role'],r['brief'],r['context'] or '')
+            plan=build_search_plan(criteria,r['role'],r['brief'],r['context'] or '',r['location'] or '',r['work_setup'] or '')
             con.execute('update runs set criteria_json=?,search_plan_json=?,updated_at=? where id=?',(jdump(criteria),jdump(plan),now(),rid)); log_event(con,rid,'operator','CRITERIA_EDITED',criteria); con.commit(); con.close(); return self.send_json({'ok':True})
         m=re.fullmatch(r'/api/admin/runs/([^/]+)/candidates',path)
         if m:
@@ -803,6 +811,6 @@ class Handler(BaseHTTPRequestHandler):
 if __name__=='__main__':
     init_db()
     print(f'Zeli Recruitment V4 running on http://localhost:{PORT}')
-    print(f'Admin: http://localhost:{PORT}/admin?admin_token={ADMIN_TOKEN}')
+    print('Admin dashboard enabled at /admin')
     print('Source adapters:', public_search_provider() or 'public web unconfigured', '| internal pool | GitHub | manual')
     ThreadingHTTPServer(('0.0.0.0',PORT),Handler).serve_forever()
