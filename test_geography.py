@@ -129,6 +129,29 @@ class GeographyPersistenceTests(unittest.TestCase):
         self.assertEqual(geo3['status'], 'NOT_MET')
         con.commit(); con.close()
 
+    def test_not_met_normal_approve_is_not_publishable(self):
+        con, rid, criteria, run = self._run('Latin America')
+        hit = self._hit('India Person', 'Bengaluru, India', 'https://example.com/india-approve-geo')
+        cid,_,geo = server.stage_hit(con, run, criteria, hit, 1)
+        self.assertEqual(geo['status'], 'NOT_MET')
+        row = con.execute('select * from candidates where id=?',(cid,)).fetchone()
+        refused = server.apply_operator_approve(con, row, confirm_geo_override=False)
+        self.assertFalse(refused.get('ok'))
+        self.assertTrue(refused.get('needs_geo_override'))
+        after = con.execute('select operator_status,geo_override,published from candidates where id=?',(cid,)).fetchone()
+        self.assertEqual(after['operator_status'], 'PENDING')
+        self.assertEqual(after['geo_override'], 0)
+        self.assertEqual(after['published'], 0)
+        eligible = con.execute("""select count(*) n from candidates where run_id=? and operator_status='APPROVED'
+          and (coalesce(geo_status,'UNKNOWN')<>'NOT_MET' or coalesce(geo_override,0)=1)""",(rid,)).fetchone()['n']
+        self.assertEqual(eligible, 0)
+        confirmed = server.apply_operator_approve(con, row, confirm_geo_override=True)
+        self.assertTrue(confirmed.get('ok'))
+        overridden = con.execute('select operator_status,geo_override from candidates where id=?',(cid,)).fetchone()
+        self.assertEqual(overridden['operator_status'], 'APPROVED')
+        self.assertEqual(overridden['geo_override'], 1)
+        con.close()
+
     def test_not_met_cannot_publish_accidentally(self):
         con, rid, criteria, run = self._run('Latin America')
         hit = self._hit('India Person', 'Bengaluru, India', 'https://example.com/india-geo')

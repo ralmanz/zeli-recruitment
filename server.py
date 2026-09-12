@@ -672,6 +672,19 @@ def geo_publishable(row):
     override=int(row['geo_override'] if 'geo_override' in row.keys() and row['geo_override'] is not None else 0)
     return status!='NOT_MET' or override==1
 
+def apply_operator_approve(con, candidate, confirm_geo_override=False):
+    # MET / UNKNOWN use the normal approve path. NOT_MET stays unapproved unless
+    # the operator explicitly confirms a geography override.
+    geo_st=(candidate['geo_status'] if 'geo_status' in candidate.keys() else None) or 'UNKNOWN'
+    reason=(candidate['geo_reason'] if 'geo_reason' in candidate.keys() else None) or ''
+    if geo_st=='NOT_MET' and not confirm_geo_override:
+        return {'ok':False,'needs_geo_override':True,'geo_status':'NOT_MET','geo_reason':reason}
+    if geo_st=='NOT_MET':
+        con.execute("update candidates set operator_status='APPROVED',geo_override=1,updated_at=? where id=?",(now(),candidate['id']))
+    else:
+        con.execute("update candidates set operator_status='APPROVED',updated_at=? where id=?",(now(),candidate['id']))
+    return {'ok':True}
+
 def github_location_query(location_hint):
     # Only pass a GitHub location: target when the place is specific enough.
     g=parse_geo(location_hint)
@@ -1687,12 +1700,9 @@ class Handler(BaseHTTPRequestHandler):
             rid,cid=m.groups(); action=data.get('action'); con=db(); r=con.execute('select * from runs where id=?',(rid,)).fetchone(); c=con.execute('select * from candidates where id=? and run_id=?',(cid,rid)).fetchone()
             if not r or not c: con.close(); return self.send_json({'error':'not found'},404)
             if action=='approve':
-                # Existing approve action is the operator override for geography NOT_MET.
-                geo_st=(c['geo_status'] if 'geo_status' in c.keys() else None) or 'UNKNOWN'
-                if geo_st=='NOT_MET':
-                    con.execute("update candidates set operator_status='APPROVED',geo_override=1,updated_at=? where id=?",(now(),cid))
-                else:
-                    con.execute("update candidates set operator_status='APPROVED',updated_at=? where id=?",(now(),cid))
+                result=apply_operator_approve(con,c,bool(data.get('geo_override')))
+                if not result.get('ok'):
+                    con.close(); return self.send_json({'error':'geography override confirmation required','geo_status':result.get('geo_status'),'geo_reason':result.get('geo_reason')},409)
             elif action=='reject': con.execute("update candidates set operator_status='REJECTED',published=0,geo_override=0,updated_at=? where id=?",(now(),cid))
             elif action=='note': con.execute('update candidates set operator_note=?,updated_at=? where id=?',(clean_text(data.get('note')),now(),cid))
             elif action=='rank': con.execute('update candidates set rank_order=?,updated_at=? where id=?',(int(data.get('rank_order') or 999),now(),cid))
