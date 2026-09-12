@@ -12,6 +12,7 @@ import re
 import secrets
 import sqlite3
 import time
+import unicodedata
 import zlib
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
@@ -300,6 +301,16 @@ def init_db():
         con.execute('ALTER TABLE public_person_sources ADD COLUMN source_provider TEXT')
     if 'discovery_round' not in public_person_sources_cols:
         con.execute('ALTER TABLE public_person_sources ADD COLUMN discovery_round INTEGER')
+    # Backward-compatible geography eligibility columns. Scoring stays separate.
+    cand_cols={row['name'] for row in con.execute('PRAGMA table_info(candidates)').fetchall()}
+    if 'geo_status' not in cand_cols:
+        con.execute("ALTER TABLE candidates ADD COLUMN geo_status TEXT DEFAULT 'UNKNOWN'")
+    if 'geo_evidence' not in cand_cols:
+        con.execute('ALTER TABLE candidates ADD COLUMN geo_evidence TEXT')
+    if 'geo_reason' not in cand_cols:
+        con.execute('ALTER TABLE candidates ADD COLUMN geo_reason TEXT')
+    if 'geo_override' not in cand_cols:
+        con.execute('ALTER TABLE candidates ADD COLUMN geo_override INTEGER NOT NULL DEFAULT 0')
     con.commit(); con.close()
 
 # ---------------- agent / semi-engine ----------------
@@ -349,6 +360,341 @@ def extract_location_hint(text):
         if loc in text: return loc.title()
     return ''
 
+def fold_geo(text):
+    text=unicodedata.normalize('NFD', text or '')
+    text=''.join(ch for ch in text if unicodedata.category(ch)!='Mn')
+    text=text.replace('&',' and ').replace('/',' ').replace('-',' ')
+    text=re.sub(r'[^\w\s,.]',' ', text.lower())
+    return re.sub(r'\s+',' ', text).strip()
+
+# Latin America and generic country/region gazetteer. Only explicit public location
+# strings are parsed; names, companies, schools and language are never used.
+LATAM_COUNTRIES = {
+  'AR','BO','BR','CL','CO','CR','CU','DO','EC','SV','GT','HN','MX','NI','PA','PY','PE','PR','UY','VE','BZ','GY','SR','GF'
+}
+SOUTH_AMERICA_COUNTRIES = {'AR','BO','BR','CL','CO','EC','GY','PY','PE','SR','UY','VE','GF'}
+NORTH_AMERICA_COUNTRIES = {'US','CA','MX'}
+EUROPE_COUNTRIES = {'GB','IE','FR','DE','ES','IT','PT','NL','BE','SE','NO','FI','DK','AT','CH','PL'}
+
+COUNTRY_ALIASES = {
+  'argentina':'AR','ar':'AR',
+  'bolivia':'BO','bo':'BO',
+  'brazil':'BR','brasil':'BR','br':'BR',
+  'chile':'CL','cl':'CL',
+  'colombia':'CO',
+  'costa rica':'CR','cr':'CR',
+  'cuba':'CU','cu':'CU',
+  'dominican republic':'DO','republica dominicana':'DO','do':'DO',
+  'ecuador':'EC','ec':'EC',
+  'el salvador':'SV','sv':'SV',
+  'guatemala':'GT','gt':'GT',
+  'honduras':'HN','hn':'HN',
+  'mexico':'MX','mx':'MX',
+  'nicaragua':'NI','ni':'NI',
+  'panama':'PA',
+  'paraguay':'PY','py':'PY',
+  'peru':'PE','pe':'PE',
+  'puerto rico':'PR','pr':'PR',
+  'uruguay':'UY','uy':'UY',
+  'venezuela':'VE','ve':'VE',
+  'belize':'BZ','bz':'BZ',
+  'guyana':'GY','gy':'GY',
+  'suriname':'SR','sr':'SR',
+  'french guiana':'GF','guiana':'GF','gf':'GF',
+  'united states':'US','united states of america':'US','usa':'US','u.s.':'US','u.s.a.':'US','us':'US',
+  'united kingdom':'GB','uk':'GB','great britain':'GB','britain':'GB','england':'GB','scotland':'GB','wales':'GB','gb':'GB',
+  'india':'IN',
+  'germany':'DE','deutschland':'DE','de':'DE',
+  'france':'FR','fr':'FR',
+  'canada':'CA','ca':'CA',
+  'spain':'ES','espana':'ES','es':'ES',
+  'italy':'IT','italia':'IT','it':'IT',
+  'australia':'AU','au':'AU',
+  'japan':'JP','jp':'JP',
+  'china':'CN','cn':'CN',
+  'netherlands':'NL','holland':'NL','nl':'NL',
+  'portugal':'PT','pt':'PT',
+  'ireland':'IE','ie':'IE',
+  'switzerland':'CH','ch':'CH',
+  'austria':'AT','at':'AT',
+  'belgium':'BE','be':'BE',
+  'sweden':'SE','se':'SE',
+  'norway':'NO','no':'NO',
+  'denmark':'DK','dk':'DK',
+  'finland':'FI','fi':'FI',
+  'poland':'PL','pl':'PL',
+  'new zealand':'NZ','nz':'NZ',
+  'south africa':'ZA','za':'ZA',
+  'singapore':'SG','sg':'SG',
+}
+COUNTRY_LABELS = {
+  'AR':'Argentina','BO':'Bolivia','BR':'Brazil','CL':'Chile','CO':'Colombia','CR':'Costa Rica','CU':'Cuba',
+  'DO':'Dominican Republic','EC':'Ecuador','SV':'El Salvador','GT':'Guatemala','HN':'Honduras','MX':'Mexico',
+  'NI':'Nicaragua','PA':'Panama','PY':'Paraguay','PE':'Peru','PR':'Puerto Rico','UY':'Uruguay','VE':'Venezuela',
+  'BZ':'Belize','GY':'Guyana','SR':'Suriname','GF':'French Guiana','US':'USA','GB':'United Kingdom','IN':'India',
+  'DE':'Germany','FR':'France','CA':'Canada','ES':'Spain','IT':'Italy','AU':'Australia','JP':'Japan','CN':'China',
+  'NL':'Netherlands','PT':'Portugal','IE':'Ireland','CH':'Switzerland','AT':'Austria','BE':'Belgium','SE':'Sweden',
+  'NO':'Norway','DK':'Denmark','FI':'Finland','PL':'Poland','NZ':'New Zealand','ZA':'South Africa','SG':'Singapore'
+}
+# Whole-string ISO codes, including codes that collide with US state abbreviations
+# when they appear inside a longer city/state string.
+ISO_WHOLE_COUNTRIES = {k.upper():v for k,v in COUNTRY_ALIASES.items() if len(k)==2 and k.isalpha()}
+ISO_WHOLE_COUNTRIES.update({'IN':'IN','CO':'CO','PA':'PA','UK':'GB'})
+
+US_STATES = {
+  'alabama':'alabama','al':'alabama','alaska':'alaska','ak':'alaska','arizona':'arizona','az':'arizona',
+  'arkansas':'arkansas','california':'california','ca':'california','colorado':'colorado',
+  'connecticut':'connecticut','ct':'connecticut','delaware':'delaware','florida':'florida','fl':'florida',
+  'georgia':'georgia','hawaii':'hawaii','hi':'hawaii','idaho':'idaho','illinois':'illinois','il':'illinois',
+  'indiana':'indiana','iowa':'iowa','ia':'iowa','kansas':'kansas','ks':'kansas','kentucky':'kentucky','ky':'kentucky',
+  'louisiana':'louisiana','la':'louisiana','maine':'maine','me':'maine','maryland':'maryland','md':'maryland',
+  'massachusetts':'massachusetts','ma':'massachusetts','michigan':'michigan','mi':'michigan',
+  'minnesota':'minnesota','mn':'minnesota','mississippi':'mississippi','ms':'mississippi',
+  'missouri':'missouri','mo':'missouri','montana':'montana','mt':'montana','nebraska':'nebraska','ne':'nebraska',
+  'nevada':'nevada','nv':'nevada','new hampshire':'new hampshire','nh':'new hampshire',
+  'new jersey':'new jersey','nj':'new jersey','new mexico':'new mexico','nm':'new mexico',
+  'new york':'new york','ny':'new york','north carolina':'north carolina','nc':'north carolina',
+  'north dakota':'north dakota','nd':'north dakota','ohio':'ohio','oh':'ohio','oklahoma':'oklahoma','ok':'oklahoma',
+  'oregon':'oregon','or':'oregon','pennsylvania':'pennsylvania','rhode island':'rhode island','ri':'rhode island',
+  'south carolina':'south carolina','sc':'south carolina','south dakota':'south dakota','sd':'south dakota',
+  'tennessee':'tennessee','tn':'tennessee','texas':'texas','tx':'texas','utah':'utah','ut':'utah',
+  'vermont':'vermont','vt':'vermont','virginia':'virginia','va':'virginia','washington':'washington','wa':'washington',
+  'west virginia':'west virginia','wv':'west virginia','wisconsin':'wisconsin','wi':'wisconsin',
+  'wyoming':'wyoming','wy':'wyoming','district of columbia':'district of columbia','washington dc':'district of columbia','dc':'district of columbia'
+}
+# City → (country, admin_or_None, display, needs_disambiguator_or_None)
+GEO_CITIES = {
+  'bogota':('CO',None,'Bogotá',None),'medellin':('CO',None,'Medellín',None),'cali':('CO',None,'Cali',None),
+  'cartagena':('CO',None,'Cartagena',None),'barranquilla':('CO',None,'Barranquilla',None),
+  'sao paulo':('BR',None,'São Paulo',None),'rio de janeiro':('BR',None,'Rio de Janeiro',None),
+  'brasilia':('BR',None,'Brasília',None),'belo horizonte':('BR',None,'Belo Horizonte',None),
+  'buenos aires':('AR',None,'Buenos Aires',None),
+  'lima':('PE',None,'Lima',None),'quito':('EC',None,'Quito',None),'guayaquil':('EC',None,'Guayaquil',None),
+  'caracas':('VE',None,'Caracas',None),'montevideo':('UY',None,'Montevideo',None),
+  'asuncion':('PY',None,'Asunción',None),'la paz':('BO',None,'La Paz',None),
+  'mexico city':('MX',None,'Mexico City',None),'ciudad de mexico':('MX',None,'Mexico City',None),'cdmx':('MX',None,'Mexico City',None),
+  'guadalajara':('MX',None,'Guadalajara',None),'monterrey':('MX',None,'Monterrey',None),
+  'santo domingo':('DO',None,'Santo Domingo',None),'havana':('CU',None,'Havana',None),'habana':('CU',None,'Havana',None),
+  'san salvador':('SV',None,'San Salvador',None),'guatemala city':('GT',None,'Guatemala City',None),
+  'tegucigalpa':('HN',None,'Tegucigalpa',None),'managua':('NI',None,'Managua',None),
+  'cincinnati':('US','ohio','Cincinnati',None),'nashville':('US','tennessee','Nashville',None),
+  'bengaluru':('IN',None,'Bengaluru',None),'bangalore':('IN',None,'Bengaluru',None),
+  'berlin':('DE',None,'Berlin',None),'munich':('DE',None,'Munich',None),'paris':('FR',None,'Paris',None),
+  'toronto':('CA',None,'Toronto',None),'sydney':('AU',None,'Sydney',None),
+}
+AMBIGUOUS_CITIES = {
+  'london':(('GB',None,'London',('uk','united kingdom','england','britain','gb')),('CA','ontario','London',('canada','ontario','ca'))),
+  'birmingham':(('US','alabama','Birmingham',('alabama','al','usa','united states','us')),('GB',None,'Birmingham',('uk','united kingdom','england','britain','gb'))),
+  'panama city':(('PA',None,'Panama City',('panama','pa','latam','latin america')),('US','florida','Panama City',('florida','fl','usa','united states','us'))),
+  'san jose':(('CR',None,'San José',('costa rica','cr','latam','latin america')),('US','california','San Jose',('california','ca','usa','united states','us'))),
+  'santiago':(('CL',None,'Santiago',('chile','cl','latam','latin america')),),
+}
+
+REGION_ALIASES = {
+  'latin america':'latin_america','latam':'latin_america','latinoamerica':'latin_america',
+  'latino america':'latin_america','america latina':'latin_america','latin-america':'latin_america',
+  'south america':'south_america','southamerica':'south_america',
+  'north america':'north_america','northamerica':'north_america',
+  'europe':'europe','eu':'europe',
+  'worldwide':'worldwide','world wide':'worldwide','global':'worldwide','anywhere':'worldwide','world':'worldwide',
+}
+REGION_COUNTRIES = {
+  'latin_america':LATAM_COUNTRIES,
+  'south_america':SOUTH_AMERICA_COUNTRIES,
+  'north_america':NORTH_AMERICA_COUNTRIES,
+  'europe':EUROPE_COUNTRIES,
+}
+REGION_LABELS = {
+  'latin_america':'Latin America','south_america':'South America','north_america':'North America','europe':'Europe','worldwide':'Worldwide'
+}
+
+def _geo_blank():
+    return {'kind':None,'region':None,'country':None,'admin':None,'city':None,'city_label':None,'admin_label':None,'label':'','raw':'','ambiguous':False}
+
+def parse_geo(text):
+    raw=clean_text(text)
+    out=_geo_blank(); out['raw']=raw
+    folded=fold_geo(raw)
+    if not folded: return out
+    compact=re.sub(r'[^\w]+','',folded)
+    if folded in REGION_ALIASES or compact in {'latam','worldwide','global'}:
+        region=REGION_ALIASES.get(folded) or ('latin_america' if compact=='latam' else 'worldwide')
+        out.update(kind='worldwide' if region=='worldwide' else 'region', region=region, label=REGION_LABELS.get(region,raw))
+        return out
+    if re.fullmatch(r'[a-z]{2}', folded):
+        code=ISO_WHOLE_COUNTRIES.get(folded.upper())
+        if code:
+            out.update(kind='country', country=code, label=COUNTRY_LABELS.get(code,code))
+            return out
+        out['ambiguous']=True
+        return out
+    # Longest city / country / state matches on the folded string.
+    found_city=None
+    for name in sorted(list(GEO_CITIES)+list(AMBIGUOUS_CITIES), key=len, reverse=True):
+        if re.search(r'(^|[\s,.])'+re.escape(name)+r'($|[\s,.])', folded):
+            found_city=name; break
+    if found_city in AMBIGUOUS_CITIES:
+        options=AMBIGUOUS_CITIES[found_city]
+        matched=None
+        for country,admin,label,hints in options:
+            if hints and any(re.search(r'(^|[\s,.])'+re.escape(h)+r'($|[\s,.])', folded) for h in hints):
+                matched=(country,admin,label); break
+        if matched:
+            country,admin,label=matched
+            out.update(kind='city', country=country, admin=admin, city=found_city, city_label=label, admin_label=admin.title() if admin else None, label=label)
+        else:
+            out['ambiguous']=True
+            out['label']=raw
+            return out
+    elif found_city:
+        country,admin,label,_=GEO_CITIES[found_city]
+        out.update(kind='city', country=country, admin=admin, city=found_city, city_label=label, admin_label=admin.title() if admin else None, label=label)
+    found_country=None
+    for name in sorted(COUNTRY_ALIASES, key=len, reverse=True):
+        if len(name)<3 and name not in {'usa','uk'}: continue
+        if re.search(r'(^|[\s,.])'+re.escape(name)+r'($|[\s,.])', folded):
+            found_country=COUNTRY_ALIASES[name]; break
+    if found_country:
+        out['country']=out['country'] or found_country
+        if not out['kind']:
+            out.update(kind='country', label=COUNTRY_LABELS.get(found_country,raw))
+    found_admin=None
+    for name in sorted(US_STATES, key=len, reverse=True):
+        if len(name)==2 and not re.search(r'(^|[\s,.])'+re.escape(name)+r'($|[\s,.])', folded):
+            continue
+        if re.search(r'(^|[\s,.])'+re.escape(name)+r'($|[\s,.])', folded):
+            found_admin=US_STATES[name]; break
+    if found_admin:
+        out['admin']=out['admin'] or found_admin
+        out['admin_label']=found_admin.title()
+        out['country']=out['country'] or 'US'
+        if out['kind'] not in ('city',):
+            out.update(kind='admin', label=found_admin.title()+', USA')
+    if out['country'] and not out['label']:
+        out['label']=COUNTRY_LABELS.get(out['country'], raw)
+    if not out['kind'] and not out['ambiguous']:
+        # Unresolved free text is unknown, not a guessed place.
+        out['ambiguous']=True
+        out['label']=raw
+    return out
+
+def evaluate_geography(required_location, candidate_location):
+    # Eligibility only. Uses explicit candidate location text; never name/company/school.
+    req=parse_geo(required_location)
+    evidence=clean_text(candidate_location)
+    if not req.get('kind') or req.get('kind')=='worldwide' or req.get('region')=='worldwide':
+        return {'status':'MET','evidence':evidence,'reason':'Worldwide / unrestricted geography'}
+    if not evidence:
+        return {'status':'UNKNOWN','evidence':'','reason':'No reliable candidate location'}
+    cand=parse_geo(candidate_location)
+    if cand.get('ambiguous') and not cand.get('country') and not cand.get('city') and not cand.get('region'):
+        return {'status':'UNKNOWN','evidence':evidence,'reason':f'{evidence} is ambiguous'}
+    req_label=req.get('label') or clean_text(required_location)
+    cand_label=cand.get('city_label') or cand.get('label') or evidence
+
+    def not_met(detail):
+        return {'status':'NOT_MET','evidence':evidence,'reason':detail}
+
+    def met(detail):
+        return {'status':'MET','evidence':evidence,'reason':detail}
+
+    def unknown(detail):
+        return {'status':'UNKNOWN','evidence':evidence,'reason':detail}
+
+    if req.get('city'):
+        if cand.get('city') and cand.get('city')==req['city'] and (not req.get('country') or cand.get('country')==req.get('country')):
+            return met(f"{cand_label} matches {req_label}")
+        if cand.get('country') and req.get('country') and cand['country']!=req['country']:
+            return not_met(f"{cand_label} is outside {req_label}")
+        if cand.get('admin') and req.get('admin') and cand['admin']!=req['admin'] and cand.get('country')==req.get('country'):
+            return not_met(f"{cand_label} is outside {req_label}")
+        if cand.get('city') and req.get('country') and cand.get('country')==req.get('country') and cand.get('city')!=req.get('city'):
+            return not_met(f"{cand_label} is outside {req_label}")
+        if cand.get('country')==req.get('country') and not cand.get('city'):
+            return unknown(f"{evidence} is not specific enough for {req_label}")
+        return unknown(f"{evidence} is not specific enough for {req_label}")
+
+    if req.get('admin'):
+        if cand.get('admin')==req.get('admin') and (not req.get('country') or cand.get('country')==req.get('country')):
+            return met(f"{cand_label} is in {req_label}")
+        if cand.get('country') and req.get('country') and cand['country']!=req['country']:
+            return not_met(f"{cand_label} is outside {req_label}")
+        if cand.get('admin') and cand['admin']!=req['admin']:
+            return not_met(f"{cand_label} is outside {req_label}")
+        if cand.get('country')==req.get('country') and not cand.get('admin'):
+            return unknown(f"{evidence} is not specific enough for {req_label}")
+        return unknown(f"{evidence} is not specific enough for {req_label}")
+
+    if req.get('country') and not req.get('region'):
+        if cand.get('country')==req.get('country'):
+            return met(f"{cand_label} is in {req_label}")
+        if cand.get('country') and cand['country']!=req['country']:
+            return not_met(f"{cand_label} is outside {req_label}")
+        if cand.get('region') and req['country'] in REGION_COUNTRIES.get(cand['region'], set()):
+            return unknown(f"{evidence} is not specific enough for {req_label}")
+        return unknown(f"{evidence} is not specific enough for {req_label}")
+
+    if req.get('region'):
+        allowed=REGION_COUNTRIES.get(req['region'], set())
+        if cand.get('country') and cand['country'] in allowed:
+            return met(f"{cand_label} is in {req_label}")
+        if cand.get('region')==req['region']:
+            return met(f"{cand_label} is in {req_label}")
+        if cand.get('region') and cand['region']!=req['region']:
+            extra=REGION_COUNTRIES.get(cand['region'], set())
+            if extra and extra<=allowed:
+                return met(f"{cand_label} is in {req_label}")
+            if extra and extra.isdisjoint(allowed):
+                return not_met(f"{cand_label} is outside {req_label}")
+            return unknown(f"{evidence} is not specific enough for {req_label}")
+        if cand.get('country') and cand['country'] not in allowed:
+            return not_met(f"{cand_label} is outside {req_label}")
+        return unknown(f"{evidence} is not specific enough for {req_label}")
+
+    return unknown(f"{evidence} is not specific enough for {req_label}")
+
+def candidate_geo_eval(run, location):
+    required=''
+    if run is not None:
+        try: required=clean_text(run['location'] or '')
+        except Exception: required=clean_text(getattr(run,'location','') or '')
+    return evaluate_geography(required, location)
+
+def apply_geo_ranking(con, run_id):
+    rows=con.execute('select id,score,coalesce(geo_status,\'UNKNOWN\') geo_status from candidates where run_id=?',(run_id,)).fetchall()
+    rank_key={'MET':0,'UNKNOWN':1,'NOT_MET':2}
+    ordered=sorted(rows, key=lambda r:(rank_key.get(r['geo_status'],1), -(r['score'] or 0), r['id']))
+    for i,row in enumerate(ordered, start=1):
+        con.execute('update candidates set rank_order=? where id=?',(i,row['id']))
+
+def geo_publishable(row):
+    status=(row['geo_status'] if 'geo_status' in row.keys() else None) or 'UNKNOWN'
+    override=int(row['geo_override'] if 'geo_override' in row.keys() and row['geo_override'] is not None else 0)
+    return status!='NOT_MET' or override==1
+
+def apply_operator_approve(con, candidate, confirm_geo_override=False):
+    # MET / UNKNOWN use the normal approve path. NOT_MET stays unapproved unless
+    # the operator explicitly confirms a geography override.
+    geo_st=(candidate['geo_status'] if 'geo_status' in candidate.keys() else None) or 'UNKNOWN'
+    reason=(candidate['geo_reason'] if 'geo_reason' in candidate.keys() else None) or ''
+    if geo_st=='NOT_MET' and not confirm_geo_override:
+        return {'ok':False,'needs_geo_override':True,'geo_status':'NOT_MET','geo_reason':reason}
+    if geo_st=='NOT_MET':
+        con.execute("update candidates set operator_status='APPROVED',geo_override=1,updated_at=? where id=?",(now(),candidate['id']))
+    else:
+        con.execute("update candidates set operator_status='APPROVED',updated_at=? where id=?",(now(),candidate['id']))
+    return {'ok':True}
+
+def github_location_query(location_hint):
+    # Only pass a GitHub location: target when the place is specific enough.
+    g=parse_geo(location_hint)
+    if not g.get('kind') or g['kind'] in ('worldwide','region'):
+        return ''
+    if g.get('city_label'): return g['city_label']
+    if g.get('admin_label') and g.get('country')=='US': return g['admin_label']
+    if g.get('country'): return COUNTRY_LABELS.get(g['country'],'')
+    return ''
+
 def build_search_plan(criteria, role, brief='', context='', location='', work_setup=''):
     eq=[x for x in criteria.get('equivalent_titles',[]) if 'Adjacent titles' not in x]
     signals=criteria.get('signals',[])[:4]
@@ -372,7 +718,10 @@ def build_search_plan(criteria, role, brief='', context='', location='', work_se
     locator=[]
     for t in eq[:3] or [role]:
         locator.append(clean_text(f'site:linkedin.com/in "{t}" {location_term}'))
-    return {'rounds':rounds,'profile_locator_queries':locator,'location_hint':location,'work_setup':work_setup}
+    geo=parse_geo(location)
+    return {'rounds':rounds,'profile_locator_queries':locator,'location_hint':location,'work_setup':work_setup,
+      'geography':{'raw':location,'kind':geo.get('kind'),'region':geo.get('region'),'country':geo.get('country'),
+        'admin':geo.get('admin'),'city':geo.get('city'),'label':geo.get('label')}}
 
 def tri_status(candidate_text, criterion):
     ct=(candidate_text or '').lower(); cr=(criterion or '').lower()
@@ -635,8 +984,9 @@ def github_search(query, location_hint='', limit=8):
     qt=tokens(query)
     if not (set(qt)&TECH_ROLE_TOKENS): return []
     gh_query=' '.join([t for t in qt if t in TECH_ROLE_TOKENS][:2])
-    if location_hint and location_hint.lower() not in {'latam','latin america'}:
-        gh_query += f' location:"{location_hint}"'
+    gh_loc=github_location_query(location_hint)
+    if gh_loc:
+        gh_query += f' location:"{gh_loc}"'
     headers={'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'}
     if os.getenv('GITHUB_TOKEN'): headers['Authorization']='Bearer '+os.environ['GITHUB_TOKEN']
     data=http_json('https://api.github.com/search/users?'+urlencode({'q':gh_query or 'engineer','per_page':min(limit,10)}),headers=headers)
@@ -1082,20 +1432,22 @@ def stage_hit(con,run,criteria,hit,search_round):
           'summary':merged, 'skills':merged_skills
         }
         base,adj,final,cov,evidence,verify,_=score_candidate(con,run['recruiter_key'],criteria,merged_c)
+        geo=candidate_geo_eval(run, merged_c['location'])
         con.execute('''update candidates set title=?,company=?,location=?,profile_url=?,summary=?,skills_json=?,evidence_json=?,verify_json=?,
-          base_score=?,learned_adjustment=?,score=?,evidence_coverage=?,search_round=min(search_round,?),updated_at=? where id=?''',
-          (merged_c['title'],merged_c['company'],merged_c['location'],merged_c['profile_url'],merged,jdump(merged_skills),jdump(evidence),jdump(verify),base,adj,final,cov,search_round,now(),existing['id']))
+          base_score=?,learned_adjustment=?,score=?,evidence_coverage=?,search_round=min(search_round,?),geo_status=?,geo_evidence=?,geo_reason=?,updated_at=? where id=?''',
+          (merged_c['title'],merged_c['company'],merged_c['location'],merged_c['profile_url'],merged,jdump(merged_skills),jdump(evidence),jdump(verify),base,adj,final,cov,search_round,geo['status'],geo['evidence'],geo['reason'],now(),existing['id']))
         add_source(con,existing['id'],hit,search_round)
-        return existing['id'],False
+        return existing['id'],False,geo
     base,adj,final,cov,evidence,verify,_=score_candidate(con,run['recruiter_key'],criteria,c)
+    geo=candidate_geo_eval(run, c['location'])
     cid='cand_'+secrets.token_hex(6)
     rank=con.execute('select coalesce(max(rank_order),0)+1 n from candidates where run_id=?',(run['id'],)).fetchone()['n']
     con.execute('''insert into candidates(id,run_id,name,title,company,location,profile_url,summary,skills_json,evidence_json,verify_json,
-      base_score,learned_adjustment,score,evidence_coverage,search_round,operator_status,rank_order,created_at,updated_at)
-      values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
-      (cid,run['id'],c['name'],c['title'],c['company'],c['location'],c['profile_url'],c['summary'],jdump(c['skills']),jdump(evidence),jdump(verify),base,adj,final,cov,search_round,'PENDING',rank,now(),now()))
+      base_score,learned_adjustment,score,evidence_coverage,search_round,operator_status,rank_order,geo_status,geo_evidence,geo_reason,created_at,updated_at)
+      values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+      (cid,run['id'],c['name'],c['title'],c['company'],c['location'],c['profile_url'],c['summary'],jdump(c['skills']),jdump(evidence),jdump(verify),base,adj,final,cov,search_round,'PENDING',rank,geo['status'],geo['evidence'],geo['reason'],now(),now()))
     add_source(con,cid,hit,search_round)
-    return cid,True
+    return cid,True,geo
 
 def execute_discovery(run_id, adapters, include_locator=True, per_query_limit=8, max_new_candidates=40):
     con=db(); run=con.execute('select * from runs where id=?',(run_id,)).fetchone()
@@ -1103,7 +1455,7 @@ def execute_discovery(run_id, adapters, include_locator=True, per_query_limit=8,
     criteria=jload(run['criteria_json'],{}) or {}; plan=jload(run['search_plan_json'],{}) or {}
     rounds=plan.get('rounds') if isinstance(plan,dict) else plan
     rounds=rounds or []
-    created=0; merged=0; total_hits=0; errors=[]
+    created=0; merged=0; total_hits=0; errors=[]; not_met_kept=0
     health=source_health(con,run['recruiter_key'])
     adapter_order=[a for a in adapters if a in {'internal_pool','public_web','github','stackexchange','openalex'}]
     se_state={}; oa_state={}
@@ -1129,9 +1481,14 @@ def execute_discovery(run_id, adapters, include_locator=True, per_query_limit=8,
                 con.execute('insert into discovery_queries(run_id,search_round,adapter,query,status,hits,error,duration_ms,created_at) values(?,?,?,?,?,?,?,?,?)',
                   (run_id,int(rd.get('round') or 1),'public_cache',query,cache_status,len(cache_hits),cache_err,cache_duration,now()))
                 for hit in cache_hits:
+                    preview=candidate_geo_eval(run, hit.get('location',''))
+                    if preview['status']=='NOT_MET' and not_met_kept>=12:
+                        continue
                     total_hits+=1
-                    _,is_new=stage_hit(con,run,criteria,hit,int(rd.get('round') or 1))
-                    if is_new: created+=1
+                    _,is_new,geo=stage_hit(con,run,criteria,hit,int(rd.get('round') or 1))
+                    if is_new and geo['status']=='NOT_MET':
+                        not_met_kept+=1
+                    elif is_new: created+=1
                     else: merged+=1
                     if created>=max_new_candidates: break
             for adapter in adapter_order:
@@ -1161,9 +1518,14 @@ def execute_discovery(run_id, adapters, include_locator=True, per_query_limit=8,
                 con.execute('insert into discovery_queries(run_id,search_round,adapter,query,status,hits,error,duration_ms,created_at) values(?,?,?,?,?,?,?,?,?)',
                   (run_id,int(rd.get('round') or 1),adapter,query,status,len(hits),err,duration,now()))
                 for hit in hits:
+                    preview=candidate_geo_eval(run, hit.get('location',''))
+                    if preview['status']=='NOT_MET' and not_met_kept>=12:
+                        continue
                     total_hits+=1
-                    _,is_new=stage_hit(con,run,criteria,hit,int(rd.get('round') or 1))
-                    if is_new: created+=1
+                    _,is_new,geo=stage_hit(con,run,criteria,hit,int(rd.get('round') or 1))
+                    if is_new and geo['status']=='NOT_MET':
+                        not_met_kept+=1
+                    elif is_new: created+=1
                     else: merged+=1
                     if adapter in ('public_web','github','stackexchange','openalex'):
                         try:
@@ -1171,8 +1533,9 @@ def execute_discovery(run_id, adapters, include_locator=True, per_query_limit=8,
                         except Exception:
                             pass
                     if created>=max_new_candidates: break
+    apply_geo_ranking(con, run_id)
     con.execute("update runs set status='OPERATOR_REVIEW',updated_at=? where id=?",(now(),run_id))
-    log_event(con,run_id,'engine','DISCOVERY_COMPLETED',{'adapters':adapter_order,'created':created,'merged':merged,'hits':total_hits,'errors':errors[:10]})
+    log_event(con,run_id,'engine','DISCOVERY_COMPLETED',{'adapters':adapter_order,'created':created,'merged':merged,'hits':total_hits,'errors':errors[:10],'not_met':not_met_kept})
     con.commit(); con.close()
     return {'created':created,'merged':merged,'hits':total_hits,'errors':errors,'adapters':adapter_order}
 
@@ -1227,9 +1590,13 @@ def run_payload(run_id, include_private=False):
         item={'id':c['id'],'name':c['name'],'title':c['title'],'company':c['company'],'location':c['location'],'profile_url':c['profile_url'],
           'evidence':jload(c['evidence_json'],[]) or [],'verify':jload(c['verify_json'],[]) or [],'decision':dec.get(c['id']),'pipeline':pipe.get(c['id'])}
         if include_private:
+            geo_status=(c['geo_status'] if 'geo_status' in c.keys() else None) or 'UNKNOWN'
             item.update({'summary':c['summary'],'skills':jload(c['skills_json'],[]) or [],'base_score':c['base_score'],'learned_adjustment':c['learned_adjustment'],
               'score':c['score'],'evidence_coverage':c['evidence_coverage'],'search_round':c['search_round'],'operator_status':c['operator_status'],
-              'operator_note':c['operator_note'],'rank_order':c['rank_order'],'published':bool(c['published']),'sources':sources})
+              'operator_note':c['operator_note'],'rank_order':c['rank_order'],'published':bool(c['published']),'sources':sources,
+              'geo_status':geo_status,'geo_evidence':(c['geo_evidence'] if 'geo_evidence' in c.keys() else '') or '',
+              'geo_reason':(c['geo_reason'] if 'geo_reason' in c.keys() else '') or '',
+              'geo_override':bool(c['geo_override']) if 'geo_override' in c.keys() and c['geo_override'] else False})
         out['candidates'].append(item)
     if include_private:
         out['events']=[{**dict(x),'payload':jload(x['payload_json'],{})} for x in con.execute('select * from events where run_id=? order by id desc limit 120',(run_id,)).fetchall()]
@@ -1325,15 +1692,18 @@ class Handler(BaseHTTPRequestHandler):
             hit={k:clean_text(data.get(k)) for k in ['name','title','company','location','profile_url','summary']}; hit['skills']=data.get('skills') or []
             hit.update({'source_type':'manual','source_url':hit['profile_url'],'source_title':'Operator-added evidence','snippet':hit['summary'],'query':'manual operator add'})
             if not hit['name']: con.close(); return self.send_json({'error':'name required'},400)
-            cid,new=stage_hit(con,r,jload(r['criteria_json'],{}),hit,int(data.get('search_round') or 1)); log_event(con,rid,'operator','CANDIDATE_ADDED',{'candidate_id':cid,'new':new}); con.commit()
+            cid,new,_=stage_hit(con,r,jload(r['criteria_json'],{}),hit,int(data.get('search_round') or 1)); apply_geo_ranking(con,rid); log_event(con,rid,'operator','CANDIDATE_ADDED',{'candidate_id':cid,'new':new}); con.commit()
             c=con.execute('select score,evidence_coverage from candidates where id=?',(cid,)).fetchone(); con.close(); return self.send_json({'id':cid,'score':c['score'],'evidence_coverage':c['evidence_coverage'],'new':new},201)
         m=re.fullmatch(r'/api/admin/runs/([^/]+)/candidates/([^/]+)',path)
         if m:
             if not self.admin_ok(qs): return self.send_json({'error':'unauthorized'},401)
             rid,cid=m.groups(); action=data.get('action'); con=db(); r=con.execute('select * from runs where id=?',(rid,)).fetchone(); c=con.execute('select * from candidates where id=? and run_id=?',(cid,rid)).fetchone()
             if not r or not c: con.close(); return self.send_json({'error':'not found'},404)
-            if action=='approve': con.execute("update candidates set operator_status='APPROVED',updated_at=? where id=?",(now(),cid))
-            elif action=='reject': con.execute("update candidates set operator_status='REJECTED',published=0,updated_at=? where id=?",(now(),cid))
+            if action=='approve':
+                result=apply_operator_approve(con,c,bool(data.get('geo_override')))
+                if not result.get('ok'):
+                    con.close(); return self.send_json({'error':'geography override confirmation required','geo_status':result.get('geo_status'),'geo_reason':result.get('geo_reason')},409)
+            elif action=='reject': con.execute("update candidates set operator_status='REJECTED',published=0,geo_override=0,updated_at=? where id=?",(now(),cid))
             elif action=='note': con.execute('update candidates set operator_note=?,updated_at=? where id=?',(clean_text(data.get('note')),now(),cid))
             elif action=='rank': con.execute('update candidates set rank_order=?,updated_at=? where id=?',(int(data.get('rank_order') or 999),now(),cid))
             elif action=='edit':
@@ -1343,19 +1713,28 @@ class Handler(BaseHTTPRequestHandler):
                   'skills':data.get('skills') or []
                 }
                 base,adj,final,cov,evidence,verify,_=score_candidate(con,r['recruiter_key'],jload(r['criteria_json'],{}),merged)
+                geo=candidate_geo_eval(r, merged['location'])
+                override=0 if geo['status']!='NOT_MET' else int(c['geo_override'] if 'geo_override' in c.keys() and c['geo_override'] else 0)
                 con.execute('''update candidates set name=?,title=?,company=?,location=?,profile_url=?,summary=?,skills_json=?,evidence_json=?,verify_json=?,
-                  base_score=?,learned_adjustment=?,score=?,evidence_coverage=?,updated_at=? where id=?''',
-                  (merged['name'],merged['title'],merged['company'],merged['location'],merged['profile_url'],merged['summary'],jdump(merged['skills']),jdump(evidence),jdump(verify),base,adj,final,cov,now(),cid))
+                  base_score=?,learned_adjustment=?,score=?,evidence_coverage=?,geo_status=?,geo_evidence=?,geo_reason=?,geo_override=?,updated_at=? where id=?''',
+                  (merged['name'],merged['title'],merged['company'],merged['location'],merged['profile_url'],merged['summary'],jdump(merged['skills']),jdump(evidence),jdump(verify),base,adj,final,cov,geo['status'],geo['evidence'],geo['reason'],override,now(),cid))
                 manual_hit={'source_type':'manual','source_url':merged['profile_url'],'source_title':'Operator-edited evidence','snippet':merged['summary'],'query':'operator edit'}
                 add_source(con,cid,manual_hit,c['search_round'])
+                apply_geo_ranking(con,rid)
             else: con.close(); return self.send_json({'error':'bad action'},400)
             log_event(con,rid,'operator','CANDIDATE_'+action.upper(),{'candidate_id':cid}); con.commit(); con.close(); return self.send_json({'ok':True})
         m=re.fullmatch(r'/api/admin/runs/([^/]+)/publish',path)
         if m:
             if not self.admin_ok(qs): return self.send_json({'error':'unauthorized'},401)
-            rid=m.group(1); con=db(); approved=con.execute("select count(*) n from candidates where run_id=? and operator_status='APPROVED'",(rid,)).fetchone()['n']
-            if approved<1: con.close(); return self.send_json({'error':'approve at least one candidate'},400)
-            con.execute("update candidates set published=case when operator_status='APPROVED' then 1 else 0 end where run_id=?",(rid,)); con.execute("update runs set status='PUBLISHED',published_at=?,updated_at=? where id=?",(now(),now(),rid)); log_event(con,rid,'operator','SHORTLIST_PUBLISHED',{'count':approved}); con.commit(); con.close(); return self.send_json({'ok':True,'published':approved})
+            rid=m.group(1); con=db()
+            # NOT_MET geography is excluded unless the operator used approve as an override.
+            approved=con.execute("""select count(*) n from candidates where run_id=? and operator_status='APPROVED'
+              and (coalesce(geo_status,'UNKNOWN')<>'NOT_MET' or coalesce(geo_override,0)=1)""",(rid,)).fetchone()['n']
+            if approved<1: con.close(); return self.send_json({'error':'approve at least one geography-eligible candidate'},400)
+            con.execute("""update candidates set published=case
+              when operator_status='APPROVED' and (coalesce(geo_status,'UNKNOWN')<>'NOT_MET' or coalesce(geo_override,0)=1) then 1
+              else 0 end where run_id=?""",(rid,))
+            con.execute("update runs set status='PUBLISHED',published_at=?,updated_at=? where id=?",(now(),now(),rid)); log_event(con,rid,'operator','SHORTLIST_PUBLISHED',{'count':approved}); con.commit(); con.close(); return self.send_json({'ok':True,'published':approved})
         m=re.fullmatch(r'/api/runs/([^/]+)/decisions',path)
         if m:
             rid=m.group(1)
