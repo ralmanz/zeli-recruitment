@@ -68,6 +68,38 @@ STACKEXCHANGE_MAX_USERS = 30
 STACKEXCHANGE_PER_TAG_MIN = 10
 STACKEXCHANGE_PER_TAG_MAX = 15
 
+# Research/academic/R&D-only activation. Ordinary commercial titles must self-skip.
+OPENALEX_ROLE_PATTERNS = (
+  r'\bresearchers?\b',
+  r'\bresearch\s+(?:engineer|scientist|fellow|associate|assistant|analyst|director|lead|specialist|intern)\b',
+  r'\bscientists?\b',
+  r'\bphysicists?\b',
+  r'\bchemists?\b',
+  r'\bbiologists?\b',
+  r'\bprofessors?\b',
+  r'\bpost-?docs?\b',
+  r'\bpostdoctoral\b',
+  r'\bacademic\b',
+  r'\bfaculty\b',
+  r'\bprincipal\s+investigators?\b',
+  r'\bscholars?\b',
+  r'\bph\.?d\.?\b',
+  r'\bdoctorate\b',
+  r'\br(?:\s*&\s*|\s+and\s+)d\b',
+  r'\bresearch and development\b',
+)
+OPENALEX_QUERY_DROP = STOPWORDS | {
+  'researcher','researchers','research','scientist','scientists','professor','professors',
+  'postdoc','postdocs','postdoctoral','academic','faculty','scholar','scholars',
+  'engineer','engineers','engineering','fellow','associate','assistant','director',
+  'principal','investigator','investigators','intern','specialist','analyst',
+  'phd','doctorate','laboratory','looking','need','needed','focused','focus',
+  'someone','including','include','please','seeking'
+}
+OPENALEX_MAX_AUTHORS = 25
+OPENALEX_MAX_WORKS = 20
+OPENALEX_AUTHORS_PER_WORK = 4
+
 # ---------------- basics ----------------
 def now():
     return datetime.now(timezone.utc).isoformat()
@@ -472,6 +504,7 @@ def source_health(con=None,recruiter_key=None):
       'public_web':{'available':bool(provider),'provider':provider,'description':'Search-engine/API discovery across the public web'},
       'github':{'available':True,'authenticated':bool(os.getenv('GITHUB_TOKEN')),'description':'Optional technical-talent signal source'},
       'stackexchange':{'available':True,'key_configured':bool(os.getenv('STACKEXCHANGE_KEY')),'description':'Official Stack Exchange API v2.3; available without a key'},
+      'openalex':{'available':True,'key_configured':bool(os.getenv('OPENALEX_API_KEY')),'description':'Official OpenAlex API; available without a key'},
       'manual':{'available':True,'description':'Operator-added profile/evidence'}
     }
     if own: con.close()
@@ -500,10 +533,10 @@ def internal_search(con,recruiter_key,query,limit=12):
         })
     return hits
 
-# ---------------- public profile cache (public_web / github / stackexchange reuse) ----------------
+# ---------------- public profile cache (public_web / github / stackexchange / openalex reuse) ----------------
 # This cache is intentionally separate from internal_pool: internal_pool is recruiter-owned
 # private data, while public_people only stores what was already discovered from public
-# sources (public_web, github, stackexchange) so future runs can reuse it instead of re-querying providers.
+# sources (public_web, github, stackexchange, openalex) so future runs can reuse it instead of re-querying providers.
 def public_graph_search(con,query,limit=10):
     rows=con.execute('select * from public_people where profile_url is not null and profile_url<>\'\'').fetchall()
     q=set(tokens(query))
@@ -528,9 +561,9 @@ def public_graph_search(con,query,limit=10):
     return hits
 
 def upsert_public_person(con,hit,source_type,source_url,source_provider='',query='',discovery_round=1):
-    # Only public_web / github / stackexchange discoveries are eligible for caching;
-    # internal_pool must never be written here.
-    if source_type not in ('public_web','github','stackexchange'): return None
+    # Only public_web / github / stackexchange / openalex discoveries are eligible for
+    # caching; internal_pool must never be written here.
+    if source_type not in ('public_web','github','stackexchange','openalex'): return None
     url=clean_text(hit.get('profile_url',''))
     if not url: return None
     pid=canonical_key(hit)
@@ -788,6 +821,218 @@ def stackexchange_search(query, source_text='', state=None, per_tag_limit=12, ma
             hits.append(hit)
     return hits
 
+def is_openalex_research_role(*parts):
+    text=clean_text(' '.join(p for p in parts if p)).lower()
+    if not text: return False
+    return any(re.search(p,text) for p in OPENALEX_ROLE_PATTERNS)
+
+def build_openalex_topic_query(*parts):
+    # Compact topical search for /works. Do not use job titles as an author-name query.
+    text=clean_text(' '.join(p for p in parts if p))
+    if not text: return ''
+    kept=[]
+    for t in tokens(text):
+        if t in OPENALEX_QUERY_DROP: continue
+        if t not in kept: kept.append(t)
+        if len(kept)>=8: break
+    return ' '.join(kept[:6])
+
+def openalex_request(path, params=None):
+    params=dict(params or {})
+    key=os.getenv('OPENALEX_API_KEY')
+    if key: params['api_key']=key
+    url='https://api.openalex.org/'+path.lstrip('/')
+    if params: url+='?'+urlencode(params, doseq=True)
+    req=Request(url,method='GET',headers={'User-Agent':USER_AGENT,'Accept':'application/json'})
+    try:
+        with urlopen(req,timeout=PUBLIC_SEARCH_TIMEOUT) as resp:
+            data=json.loads(resp.read().decode('utf-8','replace'))
+    except HTTPError as e:
+        raw=e.read() if e.fp else b''
+        try:
+            data=json.loads(raw.decode('utf-8','replace'))
+        except Exception:
+            data={'error':f'OpenAlex HTTP {e.code}'}
+        if e.code==429:
+            data=data if isinstance(data,dict) else {}
+            data['_backoff']=True
+            return data
+        raise RuntimeError(data.get('error') or data.get('message') or f'OpenAlex HTTP {e.code}') from e
+    if not isinstance(data,dict):
+        raise RuntimeError('OpenAlex returned an unexpected payload')
+    return data
+
+def _openalex_author_id(author):
+    raw=clean_text((author or {}).get('id') or '')
+    if not raw: return ''
+    if raw.startswith('https://openalex.org/'): return raw.rsplit('/',1)[-1]
+    if re.fullmatch(r'A\d+', raw): return raw
+    return ''
+
+def _openalex_pick_authors(work):
+    authorships=list(work.get('authorships') or [])
+    ordered=[]
+    seen=set()
+    for pool in (
+      [a for a in authorships if a.get('is_corresponding')],
+      [a for a in authorships if a.get('author_position')=='first'],
+      authorships
+    ):
+        for a in pool:
+            aid=_openalex_author_id((a or {}).get('author') or {})
+            key=aid or clean_text(((a or {}).get('author') or {}).get('display_name') or '').lower()
+            if not key or key in seen: continue
+            seen.add(key)
+            ordered.append(a)
+            if len(ordered)>=OPENALEX_AUTHORS_PER_WORK: return ordered
+    return ordered
+
+def _openalex_institution(inst):
+    if not isinstance(inst,dict): return '',''
+    name=clean_text(inst.get('display_name') or '')
+    loc=clean_text(inst.get('country_code') or '')
+    return name,loc
+
+def _openalex_skill_terms(works, author_topics=None):
+    terms=[]
+    def add(name):
+        name=clean_text(name)
+        if name and name.lower() not in {t.lower() for t in terms}:
+            terms.append(name)
+    for w in works or []:
+        pt=(w or {}).get('primary_topic') or {}
+        add(pt.get('display_name'))
+        for t in ((w or {}).get('topics') or [])[:3]:
+            add((t or {}).get('display_name'))
+    for t in (author_topics or [])[:4]:
+        add((t or {}).get('display_name'))
+    return terms[:8]
+
+def _openalex_author_hit(row, query):
+    author=row.get('author') or {}
+    name=clean_text(author.get('display_name') or '')
+    if not name: return None
+    aid=_openalex_author_id(author)
+    profile=clean_text(author.get('id') or '') or (f'https://openalex.org/{aid}' if aid else '')
+    inst_name,inst_loc=row.get('institution_name') or '', row.get('institution_location') or ''
+    works=row.get('works') or []
+    titles=[clean_text(w.get('display_name') or '') for w in works if clean_text(w.get('display_name') or '')]
+    cited=sum(int(w.get('cited_by_count') or 0) for w in works)
+    skills=_openalex_skill_terms(works, (row.get('hydrated') or {}).get('topics'))
+    bits=[]
+    if titles:
+        shown=', '.join(titles[:2])
+        extra=f' (+{len(titles)-2} more)' if len(titles)>2 else ''
+        bits.append(f'Author of {len(titles)} relevant work{"s" if len(titles)!=1 else ""} including {shown}{extra}')
+    if skills: bits.append('Topics: '+', '.join(skills[:4]))
+    if cited: bits.append(f'Citations on matched works: {cited}')
+    wc=(row.get('hydrated') or {}).get('works_count')
+    cc=(row.get('hydrated') or {}).get('cited_by_count')
+    if wc not in (None,''): bits.append(f'OpenAlex works: {wc}')
+    if cc not in (None,'') and not cited: bits.append(f'OpenAlex citations: {cc}')
+    if inst_name: bits.append(f'Institution: {inst_name}')
+    summary=clean_text('. '.join(bits)+('.' if bits else ''))
+    return {
+      'name':name,
+      'title':'Research author',
+      'company':inst_name,
+      'location':inst_loc,
+      'profile_url':profile,
+      'summary':summary,
+      'skills':skills,
+      'source_type':'openalex',
+      'source_url':profile,
+      'source_title':f'{name} on OpenAlex',
+      'snippet':summary,
+      'query':query
+    }
+
+def openalex_search(query, source_text='', state=None, max_works=OPENALEX_MAX_WORKS, max_authors=OPENALEX_MAX_AUTHORS):
+    # Research/academic adapter: self-skips with 0 hits for ordinary non-research roles.
+    state=state if isinstance(state,dict) else {}
+    if state.get('backoff'): return []
+    text=source_text or query
+    if not is_openalex_research_role(text): return []
+    topic=build_openalex_topic_query(text)
+    if not topic: return []
+    max_works=bounded(int(max_works or OPENALEX_MAX_WORKS), 5, OPENALEX_MAX_WORKS)
+    max_authors=bounded(int(max_authors or OPENALEX_MAX_AUTHORS), 1, OPENALEX_MAX_AUTHORS)
+    collected=state.setdefault('authors', {})
+    returned=state.setdefault('returned_ids', set())
+
+    data=openalex_request('works', {
+      'search':topic,
+      'per_page':max_works,
+      'sort':'cited_by_count:desc',
+      'select':'id,display_name,publication_year,cited_by_count,authorships,primary_topic,topics'
+    })
+    if data.get('_backoff'):
+        state['backoff']=True
+        return []
+    works=list(data.get('results') or [])[:max_works]
+    for work in works:
+        for authorship in _openalex_pick_authors(work):
+            author=(authorship or {}).get('author') or {}
+            aid=_openalex_author_id(author) or clean_text(author.get('display_name') or '').lower()
+            if not aid: continue
+            insts=list(authorship.get('institutions') or [])
+            inst_name,inst_loc=_openalex_institution(insts[0] if insts else {})
+            if not inst_loc:
+                countries=authorship.get('countries') or []
+                if countries and isinstance(countries[0],str):
+                    inst_loc=clean_text(countries[0])
+            row=collected.get(aid)
+            if not row:
+                if len(collected)>=max_authors: continue
+                collected[aid]={'author':author,'works':[],'institution_name':inst_name,'institution_location':inst_loc,'hydrated':{}}
+                row=collected[aid]
+            if work not in row['works']:
+                row['works'].append(work)
+            if inst_name and not row.get('institution_name'):
+                row['institution_name']=inst_name
+            if inst_loc and not row.get('institution_location'):
+                row['institution_location']=inst_loc
+
+    missing=[aid for aid,row in collected.items() if aid.startswith('A') and not row.get('institution_name')]
+    hydrate_ids=[aid for aid in collected if aid.startswith('A')][:max_authors]
+    # Hydrate only when a current institution or richer author evidence would help.
+    if hydrate_ids and (missing or any(len(row.get('works') or [])==1 for row in collected.values())):
+        try:
+            hdata=openalex_request('authors', {
+              'filter':'openalex_id:'+'|'.join(hydrate_ids),
+              'per_page':len(hydrate_ids),
+              'select':'id,display_name,last_known_institutions,cited_by_count,works_count,topics'
+            })
+            if hdata.get('_backoff'):
+                state['backoff']=True
+            else:
+                by_id={}
+                for item in hdata.get('results') or []:
+                    hid=_openalex_author_id(item) or clean_text(item.get('id') or '')
+                    if hid: by_id[hid]=item
+                for aid,row in collected.items():
+                    extra=by_id.get(aid)
+                    if not extra: continue
+                    row['hydrated']=extra
+                    if extra.get('display_name'):
+                        row['author']={**row['author'],'display_name':extra.get('display_name'),'id':extra.get('id') or row['author'].get('id')}
+                    last=list(extra.get('last_known_institutions') or [])
+                    if last:
+                        name,loc=_openalex_institution(last[0])
+                        if name: row['institution_name']=name
+                        if loc: row['institution_location']=loc
+        except Exception:
+            pass
+
+    hits=[]
+    for aid,row in collected.items():
+        if aid in returned: continue
+        hit=_openalex_author_hit(row, query)
+        if hit:
+            returned.add(aid)
+            hits.append(hit)
+    return hits
+
 def canonical_key(hit):
     url=clean_text(hit.get('profile_url','')).lower().rstrip('/')
     if url: return 'url:'+url
@@ -858,8 +1103,8 @@ def execute_discovery(run_id, adapters, include_locator=True, per_query_limit=8,
     rounds=rounds or []
     created=0; merged=0; total_hits=0; errors=[]
     health=source_health(con,run['recruiter_key'])
-    adapter_order=[a for a in adapters if a in {'internal_pool','public_web','github','stackexchange'}]
-    se_state={}
+    adapter_order=[a for a in adapters if a in {'internal_pool','public_web','github','stackexchange','openalex'}]
+    se_state={}; oa_state={}
     se_text=clean_text(' '.join([run['role'] or '', run['brief'] or '', run['context'] or '']))
     for rd in rounds:
         if created>=max_new_candidates: break
@@ -868,10 +1113,10 @@ def execute_discovery(run_id, adapters, include_locator=True, per_query_limit=8,
             queries=queries+(plan.get('profile_locator_queries') or [])
         for query in list(dict.fromkeys(queries)):
             if created>=max_new_candidates: break
-            # Reuse previously-cached public discoveries (public_web / github / stackexchange
-            # only) before spending a live provider query. internal_pool is never read from
-            # or written to this cache.
-            if created<max_new_candidates and ({'public_web','github','stackexchange'} & set(adapter_order)):
+            # Reuse previously-cached public discoveries (public_web / github / stackexchange /
+            # openalex only) before spending a live provider query. internal_pool is never
+            # read from or written to this cache.
+            if created<max_new_candidates and ({'public_web','github','stackexchange','openalex'} & set(adapter_order)):
                 cache_start=time.time(); cache_err=''; cache_status='OK'
                 try:
                     cache_hits=public_graph_search(con,query,per_query_limit)
@@ -903,6 +1148,11 @@ def execute_discovery(run_id, adapters, include_locator=True, per_query_limit=8,
                             continue
                         se_state['done']=True
                         hits=stackexchange_search(query,clean_text(se_text+' '+query),se_state,bounded(per_query_limit,STACKEXCHANGE_PER_TAG_MIN,STACKEXCHANGE_PER_TAG_MAX),STACKEXCHANGE_MAX_USERS)
+                    elif adapter=='openalex':
+                        if oa_state.get('done') or oa_state.get('backoff'):
+                            continue
+                        oa_state['done']=True
+                        hits=openalex_search(query,clean_text(se_text+' '+query),oa_state,OPENALEX_MAX_WORKS,OPENALEX_MAX_AUTHORS)
                 except Exception as e:
                     status='ERROR'; err=str(e)[:800]; errors.append({'adapter':adapter,'query':query,'error':err})
                 duration=int((time.time()-start)*1000)
@@ -913,7 +1163,7 @@ def execute_discovery(run_id, adapters, include_locator=True, per_query_limit=8,
                     _,is_new=stage_hit(con,run,criteria,hit,int(rd.get('round') or 1))
                     if is_new: created+=1
                     else: merged+=1
-                    if adapter in ('public_web','github','stackexchange'):
+                    if adapter in ('public_web','github','stackexchange','openalex'):
                         try:
                             upsert_public_person(con,hit,adapter,hit.get('source_url',''),hit.get('provider','') or adapter,query,int(rd.get('round') or 1))
                         except Exception:
@@ -1136,5 +1386,5 @@ if __name__=='__main__':
     init_db()
     print(f'Zeli Recruitment V4 running on http://localhost:{PORT}')
     print('Admin dashboard enabled at /admin')
-    print('Source adapters:', public_search_provider() or 'public web unconfigured', '| internal pool | GitHub | Stack Exchange | manual')
+    print('Source adapters:', public_search_provider() or 'public web unconfigured', '| internal pool | GitHub | Stack Exchange | OpenAlex | manual')
     ThreadingHTTPServer(('0.0.0.0',PORT),Handler).serve_forever()
