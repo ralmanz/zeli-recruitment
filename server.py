@@ -499,7 +499,9 @@ def source_health(con=None,recruiter_key=None):
     if recruiter_key:
         count=con.execute('select count(*) n from internal_people where recruiter_key=?',(recruiter_key,)).fetchone()['n']
     provider=public_search_provider()
+    cache_count=con.execute('select count(*) n from public_people').fetchone()['n']
     out={
+      'public_cache':{'available':cache_count>0,'records':cache_count,'description':'Cached public discoveries reused before live API calls'},
       'internal_pool':{'available':count>0,'records':count,'description':'Recruiter-owned candidate records / CSV'},
       'public_web':{'available':bool(provider),'provider':provider,'description':'Search-engine/API discovery across the public web'},
       'github':{'available':True,'authenticated':bool(os.getenv('GITHUB_TOKEN')),'description':'Optional technical-talent signal source'},
