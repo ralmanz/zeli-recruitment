@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 import csv
+import gzip
 import hashlib
 import hmac
+import html
 import io
 import json
 import math
@@ -10,6 +12,7 @@ import re
 import secrets
 import sqlite3
 import time
+import zlib
 from datetime import datetime, timezone
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
@@ -38,6 +41,32 @@ STOPWORDS = {
 }
 
 TECH_ROLE_TOKENS = {'software','developer','engineer','engineering','data','devops','security','cloud','backend','frontend','fullstack','python','java','javascript','machine','ml','ai'}
+
+# Concrete Stack Overflow technology tags only. Generic role words such as
+# engineer, software, or developer are never treated as tags by themselves.
+STACKEXCHANGE_TAG_SPECS = (
+  ('typescript', 'TypeScript', (r'\btypescript\b',)),
+  ('javascript', 'JavaScript', (r'\bjavascript\b', r'\bjava[\s-]+script\b')),
+  ('python', 'Python', (r'\bpython\b',)),
+  ('java', 'Java', (r'\bjava\b',)),
+  ('c#', 'C#', (r'(?<!\w)c#(?!\w)', r'\bcsharp\b', r'\bc-sharp\b', r'\bc\s+sharp\b')),
+  ('c++', 'C++', (r'(?<!\w)c\+\+(?!\w)', r'\bcpp\b')),
+  ('reactjs', 'React', (r'\breactjs\b', r'\breact\.js\b', r'\breact[\s-]+native\b', r'\breact[\s-]+(?:developer|engineer|programmer)\b', r'(?:with|using|in|including|especially)\s+react\b', r'\breact\s+(?:experience|skills?|apps?|components?|framework|library)\b', r'\breact\b(?=\s*[,;/|])')),
+  ('node.js', 'Node.js', (r'\bnode\.js\b', r'\bnodejs\b', r'\bnode[\s-]*js\b')),
+  ('amazon-web-services', 'AWS', (r'\baws\b', r'\bamazon\s+web\s+services\b')),
+  ('azure', 'Azure', (r'\bazure\b',)),
+  ('docker', 'Docker', (r'\bdocker\b',)),
+  ('kubernetes', 'Kubernetes', (r'\bkubernetes\b', r'\bk8s\b')),
+  ('postgresql', 'PostgreSQL', (r'\bpostgresql\b', r'\bpostgres\b')),
+  ('mysql', 'MySQL', (r'\bmysql\b',)),
+  ('sql', 'SQL', (r'\bsql\b',)),
+  ('.net', '.NET', (r'(?<!\w)\.net\b', r'\bdotnet\b', r'\bdot\s*net\b')),
+  ('go', 'Go', (r'\bgolang\b', r'\bgo-lang\b', r'\bgo\s+(?:developer|engineer|programmer|language|runtime|backend)\b', r'(?:experience(?:\s+with)?|proficien\w*|skills?|languages?|stack)[^\n.]{0,80}\bgo\b')),
+  ('rust', 'Rust', (r'\brust(?:lang|-lang)?\b', r'\brust\s+(?:developer|engineer|programmer|language)\b')),
+)
+STACKEXCHANGE_MAX_USERS = 30
+STACKEXCHANGE_PER_TAG_MIN = 10
+STACKEXCHANGE_PER_TAG_MAX = 15
 
 # ---------------- basics ----------------
 def now():
@@ -442,6 +471,7 @@ def source_health(con=None,recruiter_key=None):
       'internal_pool':{'available':count>0,'records':count,'description':'Recruiter-owned candidate records / CSV'},
       'public_web':{'available':bool(provider),'provider':provider,'description':'Search-engine/API discovery across the public web'},
       'github':{'available':True,'authenticated':bool(os.getenv('GITHUB_TOKEN')),'description':'Optional technical-talent signal source'},
+      'stackexchange':{'available':True,'key_configured':bool(os.getenv('STACKEXCHANGE_KEY')),'description':'Official Stack Exchange API v2.3; available without a key'},
       'manual':{'available':True,'description':'Operator-added profile/evidence'}
     }
     if own: con.close()
@@ -470,10 +500,10 @@ def internal_search(con,recruiter_key,query,limit=12):
         })
     return hits
 
-# ---------------- public profile cache (public_web / github reuse) ----------------
+# ---------------- public profile cache (public_web / github / stackexchange reuse) ----------------
 # This cache is intentionally separate from internal_pool: internal_pool is recruiter-owned
 # private data, while public_people only stores what was already discovered from public
-# sources (public_web, github) so future runs can reuse it instead of re-querying providers.
+# sources (public_web, github, stackexchange) so future runs can reuse it instead of re-querying providers.
 def public_graph_search(con,query,limit=10):
     rows=con.execute('select * from public_people where profile_url is not null and profile_url<>\'\'').fetchall()
     q=set(tokens(query))
@@ -498,9 +528,9 @@ def public_graph_search(con,query,limit=10):
     return hits
 
 def upsert_public_person(con,hit,source_type,source_url,source_provider='',query='',discovery_round=1):
-    # Only public_web / github discoveries are eligible for caching; internal_pool must never
-    # be written here.
-    if source_type not in ('public_web','github'): return None
+    # Only public_web / github / stackexchange discoveries are eligible for caching;
+    # internal_pool must never be written here.
+    if source_type not in ('public_web','github','stackexchange'): return None
     url=clean_text(hit.get('profile_url',''))
     if not url: return None
     pid=canonical_key(hit)
@@ -589,6 +619,175 @@ def github_search(query, location_hint='', limit=8):
           'skills':[],'source_type':'github','source_url':profile,'source_title':f'{name} on GitHub','snippet':bio,'query':query})
     return hits
 
+def extract_stackexchange_tags(*parts):
+    # Only concrete technology names become tags. engineer/software/developer never qualify alone.
+    text=clean_text(' '.join(p for p in parts if p))
+    if not text: return []
+    text_l=text.lower()
+    found=[]
+    for so_tag,label,pats in STACKEXCHANGE_TAG_SPECS:
+        pos=None
+        for pat in pats:
+            m=re.search(pat,text_l)
+            if m:
+                pos=m.start(); break
+        if pos is not None:
+            found.append((pos,so_tag,label))
+    tags={t for _,t,_ in found}
+    if 'reactjs' not in tags:
+        m=re.search(r'\breact\b',text_l)
+        if m and tags:
+            found.append((m.start(),'reactjs','React'))
+    if 'go' not in tags:
+        m=re.search(r'(?:^|[\s,;/|(])go(?=[\s,;/|)]|$)',text_l)
+        if m and tags:
+            found.append((m.start(),'go','Go'))
+    found.sort(key=lambda x:x[0])
+    out=[]; seen=set()
+    for _,so_tag,label in found:
+        if so_tag in seen: continue
+        seen.add(so_tag)
+        out.append({'tag':so_tag,'label':label})
+    return out
+
+def _inflate_stackexchange_body(raw, content_encoding=''):
+    if not raw: return raw
+    enc=(content_encoding or '').lower()
+    if raw[:1] in (b'{', b'['): return raw
+    if 'deflate' in enc and 'gzip' not in enc:
+        return zlib.decompress(raw)
+    try:
+        return gzip.decompress(raw)
+    except Exception:
+        try:
+            return zlib.decompress(raw)
+        except Exception:
+            return raw
+
+def stackexchange_request(path, params=None):
+    params=dict(params or {})
+    params.setdefault('site','stackoverflow')
+    key=os.getenv('STACKEXCHANGE_KEY')
+    if key: params['key']=key
+    url='https://api.stackexchange.com/2.3/'+path.lstrip('/')
+    if params: url+='?'+urlencode(params, doseq=True)
+    req=Request(url,method='GET',headers={'User-Agent':USER_AGENT,'Accept':'application/json','Accept-Encoding':'gzip, deflate'})
+    try:
+        with urlopen(req,timeout=PUBLIC_SEARCH_TIMEOUT) as resp:
+            raw=_inflate_stackexchange_body(resp.read(), resp.headers.get('Content-Encoding',''))
+            data=json.loads(raw.decode('utf-8','replace'))
+    except HTTPError as e:
+        raw=_inflate_stackexchange_body(e.read(), e.headers.get('Content-Encoding','') if e.headers else '')
+        try:
+            data=json.loads(raw.decode('utf-8','replace'))
+        except Exception:
+            raise RuntimeError(f'Stack Exchange HTTP {e.code}') from e
+    if not isinstance(data,dict):
+        raise RuntimeError('Stack Exchange returned an unexpected payload')
+    return data
+
+def _stackexchange_user_hit(user, tags, answer_score, query):
+    name=html.unescape(clean_text(user.get('display_name') or ''))
+    if not name: return None
+    uid=user.get('user_id')
+    profile=clean_text(user.get('link') or '') or (f'https://stackoverflow.com/users/{uid}' if uid else '')
+    location=html.unescape(clean_text(user.get('location') or ''))
+    website=clean_text(user.get('website_url') or '')
+    reputation=user.get('reputation')
+    labels=[t['label'] for t in tags]
+    bits=[]
+    if labels: bits.append('Top answerer for '+', '.join(labels))
+    if reputation not in (None,''): bits.append(f'Reputation: {reputation}')
+    if answer_score not in (None,''): bits.append(f'Answer score: {answer_score}')
+    if website: bits.append(f'Website: {website}')
+    summary=clean_text('. '.join(bits)+('.' if bits else ''))
+    return {
+      'name':name,
+      'title':'Stack Overflow contributor',
+      'company':'',
+      'location':location,
+      'profile_url':profile,
+      'summary':summary,
+      'skills':labels,
+      'source_type':'stackexchange',
+      'source_url':profile,
+      'source_title':f'{name} on Stack Overflow',
+      'snippet':summary,
+      'query':query
+    }
+
+def stackexchange_search(query, source_text='', state=None, per_tag_limit=12, max_users=STACKEXCHANGE_MAX_USERS):
+    # Technical-only adapter: self-skips with 0 hits when no concrete technology tags are present.
+    state=state if isinstance(state,dict) else {}
+    if state.get('backoff'): return []
+    tags=extract_stackexchange_tags(source_text or query)
+    if not tags: return []
+    pending=[t for t in tags if t['tag'] not in (state.get('fetched_tags') or set())]
+    if not pending: return []
+    per_tag=bounded(int(per_tag_limit or 12), STACKEXCHANGE_PER_TAG_MIN, STACKEXCHANGE_PER_TAG_MAX)
+    max_users=bounded(int(max_users or STACKEXCHANGE_MAX_USERS), 1, STACKEXCHANGE_MAX_USERS)
+    collected=state.setdefault('users', {})
+    fetched=state.setdefault('fetched_tags', set())
+    returned=state.setdefault('returned_ids', set())
+
+    def mark_backoff(data):
+        if not data: return False
+        err=str(data.get('error_name') or '').lower()
+        if data.get('backoff') or data.get('quota_remaining')==0 or 'throttle' in err:
+            state['backoff']=True
+            return True
+        return False
+
+    for spec in pending:
+        if state.get('backoff'): break
+        path='tags/'+quote(spec['tag'], safe='')+'/top-answerers/all_time'
+        data=stackexchange_request(path, {'pagesize':per_tag})
+        fetched.add(spec['tag'])
+        stopped=mark_backoff(data)
+        if data.get('error_id') and not data.get('items'):
+            if stopped: break
+            raise RuntimeError(data.get('error_message') or f"Stack Exchange error for tag {spec['tag']}")
+        for item in (data.get('items') or [])[:per_tag]:
+            user=(item or {}).get('user') or {}
+            uid=user.get('user_id')
+            if not uid: continue
+            if uid in collected:
+                if spec not in collected[uid]['tags']:
+                    collected[uid]['tags'].append(spec)
+                if (item.get('score') or 0)>(collected[uid].get('score') or 0):
+                    collected[uid]['score']=item.get('score')
+                    collected[uid]['user']={**collected[uid]['user'], **{k:v for k,v in user.items() if v}}
+                continue
+            if len(collected)>=max_users: continue
+            collected[uid]={'user':user,'score':item.get('score'),'tags':[spec]}
+        if stopped or len(collected)>=max_users: break
+
+    if not collected: return []
+    if not state.get('backoff'):
+        ids=[str(uid) for uid in collected.keys()]
+        try:
+            data=stackexchange_request('users/'+';'.join(ids), {'pagesize':len(ids)})
+            mark_backoff(data)
+            if data.get('error_id') and not data.get('items'):
+                if not state.get('backoff'):
+                    raise RuntimeError(data.get('error_message') or 'Stack Exchange user lookup failed')
+            else:
+                by_id={u.get('user_id'):u for u in (data.get('items') or []) if u.get('user_id')}
+                for uid,row in collected.items():
+                    extra=by_id.get(uid)
+                    if extra: row['user']={**row['user'], **extra}
+        except Exception:
+            # Keep conservative shallow-user records rather than failing the run.
+            pass
+    hits=[]
+    for uid,row in collected.items():
+        if uid in returned: continue
+        hit=_stackexchange_user_hit(row['user'], row['tags'], row.get('score'), query)
+        if hit:
+            returned.add(uid)
+            hits.append(hit)
+    return hits
+
 def canonical_key(hit):
     url=clean_text(hit.get('profile_url','')).lower().rstrip('/')
     if url: return 'url:'+url
@@ -659,7 +858,9 @@ def execute_discovery(run_id, adapters, include_locator=True, per_query_limit=8,
     rounds=rounds or []
     created=0; merged=0; total_hits=0; errors=[]
     health=source_health(con,run['recruiter_key'])
-    adapter_order=[a for a in adapters if a in {'internal_pool','public_web','github'}]
+    adapter_order=[a for a in adapters if a in {'internal_pool','public_web','github','stackexchange'}]
+    se_state={}
+    se_text=clean_text(' '.join([run['role'] or '', run['brief'] or '', run['context'] or '']))
     for rd in rounds:
         if created>=max_new_candidates: break
         queries=rd.get('queries',[])
@@ -667,10 +868,10 @@ def execute_discovery(run_id, adapters, include_locator=True, per_query_limit=8,
             queries=queries+(plan.get('profile_locator_queries') or [])
         for query in list(dict.fromkeys(queries)):
             if created>=max_new_candidates: break
-            # Reuse previously-cached public discoveries (public_web / github only) before
-            # spending a live provider query. internal_pool is never read from or written to
-            # this cache.
-            if created<max_new_candidates and ({'public_web','github'} & set(adapter_order)):
+            # Reuse previously-cached public discoveries (public_web / github / stackexchange
+            # only) before spending a live provider query. internal_pool is never read from
+            # or written to this cache.
+            if created<max_new_candidates and ({'public_web','github','stackexchange'} & set(adapter_order)):
                 cache_start=time.time(); cache_err=''; cache_status='OK'
                 try:
                     cache_hits=public_graph_search(con,query,per_query_limit)
@@ -697,6 +898,11 @@ def execute_discovery(run_id, adapters, include_locator=True, per_query_limit=8,
                         hits=public_web_search(query,per_query_limit)
                     elif adapter=='github':
                         hits=github_search(query,plan.get('location_hint',''),min(per_query_limit,8))
+                    elif adapter=='stackexchange':
+                        if se_state.get('done') or se_state.get('backoff'):
+                            continue
+                        se_state['done']=True
+                        hits=stackexchange_search(query,clean_text(se_text+' '+query),se_state,bounded(per_query_limit,STACKEXCHANGE_PER_TAG_MIN,STACKEXCHANGE_PER_TAG_MAX),STACKEXCHANGE_MAX_USERS)
                 except Exception as e:
                     status='ERROR'; err=str(e)[:800]; errors.append({'adapter':adapter,'query':query,'error':err})
                 duration=int((time.time()-start)*1000)
@@ -707,9 +913,9 @@ def execute_discovery(run_id, adapters, include_locator=True, per_query_limit=8,
                     _,is_new=stage_hit(con,run,criteria,hit,int(rd.get('round') or 1))
                     if is_new: created+=1
                     else: merged+=1
-                    if adapter in ('public_web','github'):
+                    if adapter in ('public_web','github','stackexchange'):
                         try:
-                            upsert_public_person(con,hit,adapter,hit.get('source_url',''),hit.get('provider','') or ('github' if adapter=='github' else ''),query,int(rd.get('round') or 1))
+                            upsert_public_person(con,hit,adapter,hit.get('source_url',''),hit.get('provider','') or adapter,query,int(rd.get('round') or 1))
                         except Exception:
                             pass
                     if created>=max_new_candidates: break
@@ -930,5 +1136,5 @@ if __name__=='__main__':
     init_db()
     print(f'Zeli Recruitment V4 running on http://localhost:{PORT}')
     print('Admin dashboard enabled at /admin')
-    print('Source adapters:', public_search_provider() or 'public web unconfigured', '| internal pool | GitHub | manual')
+    print('Source adapters:', public_search_provider() or 'public web unconfigured', '| internal pool | GitHub | Stack Exchange | manual')
     ThreadingHTTPServer(('0.0.0.0',PORT),Handler).serve_forever()
