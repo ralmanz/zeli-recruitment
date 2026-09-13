@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>Zeli Lab · Scanner Test</title>
+<style>
+  :root { color-scheme: dark; font-family: Inter, system-ui, -apple-system, sans-serif; }
+  body { margin:0; background:#0b0d10; color:#f6f7f9; }
+  main { max-width:680px; margin:auto; padding:22px 16px 40px; }
+  h1 { font-size:28px; margin:0 0 8px; }
+  p { color:#aab3bf; line-height:1.45; }
+  .card { background:#151a21; border:1px solid #262d36; border-radius:16px; padding:14px; margin-top:14px; }
+  #reader { border-radius:12px; overflow:hidden; min-height:260px; background:#050607; }
+  button { width:100%; padding:14px; border:0; border-radius:12px; font-weight:800; font-size:16px; margin-top:10px; }
+  #stop { background:#252c35; color:#fff; }
+  #result { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:22px; font-weight:800; word-break:break-all; }
+  .small { font-size:13px; color:#9099a5; }
+</style>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+</head>
+<body>
+<main>
+  <div class="small">Zeli Lab · prueba aislada</div>
+  <h1>Prueba de escaneo</h1>
+  <p>Abre esta página desde el teléfono, permite acceso a la cámara y apunta a un código de barras.</p>
+
+  <div class="card">
+    <div id="reader"></div>
+    <button id="start">Activar cámara</button>
+    <button id="stop" disabled>Detener</button>
+  </div>
+
+  <div class="card">
+    <div class="small">Último código leído</div>
+    <div id="result">—</div>
+    <div id="format" class="small"></div>
+  </div>
+</main>
+
+<script>
+let scanner;
+let running = false;
+
+const formats = [
+  Html5QrcodeSupportedFormats.EAN_13,
+  Html5QrcodeSupportedFormats.EAN_8,
+  Html5QrcodeSupportedFormats.UPC_A,
+  Html5QrcodeSupportedFormats.UPC_E,
+  Html5QrcodeSupportedFormats.CODE_128,
+  Html5QrcodeSupportedFormats.CODE_39,
+  Html5QrcodeSupportedFormats.ITF
+];
+
+async function startScanner() {
+  scanner = scanner || new Html5Qrcode("reader", { formatsToSupport: formats });
+  await scanner.start(
+    { facingMode: "environment" },
+    {
+      fps: 15,
+      qrbox: (w,h) => ({ width: Math.min(420, Math.floor(w*.9)), height: Math.min(170, Math.floor(h*.4)) })
+    },
+    (text, result) => {
+      document.getElementById("result").textContent = text;
+      const name = result?.result?.format?.formatName || "";
+      document.getElementById("format").textContent = name ? `Formato: ${name}` : "";
+      if (navigator.vibrate) navigator.vibrate(60);
+    },
+    () => {}
+  );
+  running = true;
+  document.getElementById("start").disabled = true;
+  document.getElementById("stop").disabled = false;
+}
+
+async function stopScanner() {
+  if (scanner && running) {
+    await scanner.stop();
+    running = false;
+  }
+  document.getElementById("start").disabled = false;
+  document.getElementById("stop").disabled = true;
+}
+
+document.getElementById("start").onclick = () => startScanner().catch(err => alert(err.message || err));
+document.getElementById("stop").onclick = () => stopScanner().catch(()=>{});
+</script>
+</body>
+</html>
