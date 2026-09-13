@@ -4,120 +4,110 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
 <meta name="theme-color" content="#0b0d10"/>
-<title>Zeli Lab · Scanner Test V4</title>
+<title>Zeli Lab · Scanner Test V5</title>
 <style>
-:root{color-scheme:dark;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}*{box-sizing:border-box}body{margin:0;background:#0b0d10;color:#f6f7f9}main{max-width:680px;margin:auto;padding:22px 16px 40px}h1{font-size:28px;margin:0 0 8px}p{color:#aab3bf;line-height:1.45}.card{background:#151a21;border:1px solid #262d36;border-radius:16px;padding:14px;margin-top:14px}.small{font-size:13px;color:#9099a5;line-height:1.4}.status{font-size:14px;font-weight:700;margin-bottom:10px}.ok{color:#73e29c}.warn{color:#fbbf24}.bad{color:#ff9aac}.viewport{position:relative;overflow:hidden;border-radius:12px;background:#050607;min-height:300px;border:3px solid #39424e;transition:border-color .15s,box-shadow .15s}.viewport.scanning{border-color:#fbbf24;box-shadow:0 0 0 3px rgba(251,191,36,.12)}.viewport.success{border-color:#34d399;box-shadow:0 0 0 4px rgba(52,211,153,.20)}.viewport.error{border-color:#fb7185;box-shadow:0 0 0 4px rgba(251,113,133,.18)}.viewport video,.viewport canvas{width:100%!important;height:100%!important;min-height:300px;object-fit:cover}.viewport canvas{position:absolute;inset:0}.guide{pointer-events:none;position:absolute;z-index:20;left:5%;right:5%;top:50%;transform:translateY(-50%);height:120px;border:2px solid rgba(255,255,255,.82);border-radius:12px;box-shadow:0 0 0 9999px rgba(0,0,0,.18)}.guide:after{content:"Alinea el código aquí";position:absolute;left:50%;bottom:-30px;transform:translateX(-50%);color:#fff;font-size:12px;white-space:nowrap;text-shadow:0 1px 5px #000}.state-pill{position:absolute;z-index:30;top:12px;left:50%;transform:translateX(-50%);padding:8px 13px;border-radius:999px;background:rgba(17,24,39,.86);font-size:13px;font-weight:800;white-space:nowrap;backdrop-filter:blur(8px)}.state-pill.scan{color:#fbbf24}.state-pill.good{color:#a7f3d0;background:rgba(6,78,59,.90)}.state-pill.fail{color:#fecdd3;background:rgba(127,29,29,.90)}.success-flash{pointer-events:none;position:absolute;z-index:25;inset:0;background:rgba(16,185,129,.30);opacity:0;transition:opacity .12s}.success-flash.show{opacity:1}.success-check{pointer-events:none;position:absolute;z-index:40;left:50%;top:50%;transform:translate(-50%,-50%) scale(.92);opacity:0;background:rgba(5,120,87,.94);border:2px solid rgba(167,243,208,.9);border-radius:18px;padding:18px 22px;text-align:center;font-size:26px;font-weight:900;transition:opacity .12s,transform .12s}.success-check.show{opacity:1;transform:translate(-50%,-50%) scale(1)}button,select{width:100%;min-height:48px;padding:12px 14px;border-radius:12px;font-weight:750;font-size:16px;margin-top:10px}button{border:0;background:#f4f7fb;color:#11151a}button.secondary{background:#252c35;color:#fff;border:1px solid #39424e}button.close-mode{background:#3a2d0a;color:#fde68a;border:1px solid #725914}button.close-mode.active{background:#0f5132;color:#d1fae5;border-color:#2a8d61}button:disabled{opacity:.45}select{color:#fff;background:#10141a;border:1px solid #39424e}.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.row button{width:100%}#result{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:22px;font-weight:800;word-break:break-all;margin:5px 0}.metric{display:flex;justify-content:space-between;gap:10px;border-top:1px solid #252c34;padding:9px 0}.metric:first-child{border-top:0}#cameraWrap{display:none}.mode-note{display:none;margin-top:10px;padding:10px;border-radius:10px;background:#10271f;color:#a7f3d0;font-size:13px;line-height:1.4}.mode-note.show{display:block}
+:root{color-scheme:dark;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}*{box-sizing:border-box}body{margin:0;background:#0b0d10;color:#f6f7f9}main{max-width:680px;margin:auto;padding:22px 16px 40px}h1{font-size:28px;margin:0 0 8px}p{color:#aab3bf;line-height:1.45}.card{background:#151a21;border:1px solid #262d36;border-radius:16px;padding:14px;margin-top:14px}.small{font-size:13px;color:#9099a5;line-height:1.45}.status{font-size:14px;font-weight:700;margin-bottom:10px}.ok{color:#73e29c}.warn{color:#fbbf24}.bad{color:#ff9aac}.viewport{position:relative;overflow:hidden;border-radius:12px;background:#050607;min-height:300px;border:3px solid #39424e;transition:border-color .15s,box-shadow .15s}.viewport.scanning{border-color:#fbbf24;box-shadow:0 0 0 3px rgba(251,191,36,.12)}.viewport.success{border-color:#34d399;box-shadow:0 0 0 4px rgba(52,211,153,.20)}.viewport.error{border-color:#fb7185;box-shadow:0 0 0 4px rgba(251,113,133,.18)}.viewport video,.viewport canvas{width:100%!important;height:100%!important;min-height:300px;object-fit:cover}.viewport canvas{position:absolute;inset:0}.guide{pointer-events:none;position:absolute;z-index:20;left:5%;right:5%;top:50%;transform:translateY(-50%);height:120px;border:2px solid rgba(255,255,255,.82);border-radius:12px;box-shadow:0 0 0 9999px rgba(0,0,0,.18)}.guide:after{content:"Alinea el código aquí";position:absolute;left:50%;bottom:-30px;transform:translateX(-50%);color:#fff;font-size:12px;white-space:nowrap;text-shadow:0 1px 5px #000}.state-pill{position:absolute;z-index:30;top:12px;left:50%;transform:translateX(-50%);padding:8px 13px;border-radius:999px;background:rgba(17,24,39,.86);font-size:13px;font-weight:800;white-space:nowrap;backdrop-filter:blur(8px)}.state-pill.scan{color:#fbbf24}.state-pill.good{color:#a7f3d0;background:rgba(6,78,59,.90)}.state-pill.fail{color:#fecdd3;background:rgba(127,29,29,.90)}.success-flash{pointer-events:none;position:absolute;z-index:25;inset:0;background:rgba(16,185,129,.30);opacity:0;transition:opacity .12s}.success-flash.show{opacity:1}.success-check{pointer-events:none;position:absolute;z-index:40;left:50%;top:50%;transform:translate(-50%,-50%) scale(.92);opacity:0;background:rgba(5,120,87,.94);border:2px solid rgba(167,243,208,.9);border-radius:18px;padding:18px 22px;text-align:center;font-size:26px;font-weight:900;transition:opacity .12s,transform .12s}.success-check.show{opacity:1;transform:translate(-50%,-50%) scale(1)}button,select{width:100%;min-height:48px;padding:12px 14px;border-radius:12px;font-weight:750;font-size:16px;margin-top:10px}button{border:0;background:#f4f7fb;color:#11151a}button.secondary{background:#252c35;color:#fff;border:1px solid #39424e}button:disabled{opacity:.45}select{color:#fff;background:#10141a;border:1px solid #39424e}.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.row button{width:100%}#result{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:22px;font-weight:800;word-break:break-all;margin:5px 0}.metric{display:flex;justify-content:space-between;gap:10px;border-top:1px solid #252c34;padding:9px 0}.metric:first-child{border-top:0}#cameraWrap{display:none}.equiv{margin-top:8px;padding:9px 10px;border-radius:10px;background:#10271f;color:#a7f3d0;font-size:13px;display:none}.equiv.show{display:block}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.12.1/dist/quagga.min.js"></script>
 </head>
 <body>
 <main>
-<div class="small">Zeli Lab · prueba aislada · V4</div>
+<div class="small">Zeli Lab · prueba aislada · V5</div>
 <h1>Prueba de escaneo</h1>
-<p>Ahora el lector da feedback visual y sonoro. Amarillo = buscando. Verde = leído. Rojo se usa solo para un error real de cámara/lector, no simplemente porque todavía no haya encontrado un código.</p>
+<p>Un solo modo de alta precisión. Amarillo = buscando/confirmando. Verde = lectura validada y confirmada dos veces. Rojo = error real.</p>
 
 <div class="card">
 <div id="status" class="status">Listo. Toca “Activar cámara”.</div>
 <div id="interactive" class="viewport">
   <div id="statePill" class="state-pill">Cámara detenida</div>
   <div id="flash" class="success-flash"></div>
-  <div id="successCheck" class="success-check">✓<br><span style="font-size:16px">Código leído</span></div>
+  <div id="successCheck" class="success-check">✓<br><span style="font-size:16px">Código confirmado</span></div>
   <div class="guide"></div>
 </div>
 <div id="cameraWrap"><label class="small" for="cameraSelect">Cámara</label><select id="cameraSelect"></select></div>
 <div class="row"><button id="start">Activar cámara</button><button id="stop" class="secondary" disabled>Detener</button></div>
-<button id="closeMode" class="close-mode">Modo código pequeño / curvo</button>
 <button id="switch" class="secondary" style="display:none">Probar otra cámara trasera</button>
-<div id="modeNote" class="mode-note">Modo cerca: intentaremos usar la cámara Ultra Wide si está disponible, más resolución y enfoque continuo. Si aun así se ve borroso, aléjate un poco: un código completo y nítido desde más lejos suele ser mejor que uno grande pero desenfocado.</div>
 <div id="error" class="small bad" style="margin-top:10px"></div>
 </div>
 
 <div class="card">
-<div class="small">Último código leído</div>
+<div class="small">Último código confirmado</div>
 <div id="result">—</div>
 <div id="format" class="small"></div>
 <div id="timing" class="small"></div>
+<div id="equiv" class="equiv"></div>
 </div>
 
 <div class="card">
 <div class="metric"><span class="small">Frames analizados</span><strong id="frames">0</strong></div>
 <div class="metric"><span class="small">Posibles códigos localizados</span><strong id="located">0</strong></div>
-<div class="metric"><span class="small">Lecturas decodificadas</span><strong id="decoded">0</strong></div>
+<div class="metric"><span class="small">Detecciones válidas</span><strong id="detections">0</strong></div>
+<div class="metric"><span class="small">Lecturas confirmadas</span><strong id="confirmed">0</strong></div>
 </div>
 
-<div class="card"><p class="small" style="margin:0"><strong>Código curvo:</strong> gira el envase hasta que se vea el código completo de extremo a extremo. Si parte de las barras desaparece alrededor de la curva, ningún lector puede reconstruir lo que la cámara no ve. Para códigos pequeños, prueba el “Modo código pequeño / curvo” y mantén algo más de distancia si el enfoque cercano se vuelve borroso.</p></div>
+<div class="card"><p class="small" style="margin:0"><strong>Validación automática:</strong> EAN/UPC debe pasar checksum y el mismo valor debe aparecer en dos detecciones cercanas antes de ponerse verde. Para EAN-13 que empieza en 0 también mostramos su UPC-A equivalente de 12 dígitos para evitar falsas excepciones contra una base de datos.</p></div>
 </main>
 <script>
-let running=false,devices=[],rearDevices=[],activeDeviceId=null,closeMode=false;
-let frames=0,located=0,decoded=0,startedAt=0,lastCode='',lastAcceptedAt=0;
+let running=false,devices=[],rearDevices=[],activeDeviceId=null;
+let frames=0,located=0,detections=0,confirmed=0,startedAt=0;
+let pendingCode='',pendingFormat='',pendingCount=0,pendingAt=0,lastAcceptedCode='',lastAcceptedAt=0;
 let audioCtx=null;
+const CONFIRM_WINDOW_MS=1600,ACCEPT_COOLDOWN_MS=2200;
 const viewport=document.getElementById('interactive'),statePill=document.getElementById('statePill');
 const flash=document.getElementById('flash'),successCheck=document.getElementById('successCheck');
 const statusEl=document.getElementById('status'),errorEl=document.getElementById('error');
-const startBtn=document.getElementById('start'),stopBtn=document.getElementById('stop'),switchBtn=document.getElementById('switch'),closeModeBtn=document.getElementById('closeMode');
-const cameraSelect=document.getElementById('cameraSelect'),cameraWrap=document.getElementById('cameraWrap'),modeNote=document.getElementById('modeNote');
-const framesEl=document.getElementById('frames'),locatedEl=document.getElementById('located'),decodedEl=document.getElementById('decoded');
-const resultEl=document.getElementById('result'),formatEl=document.getElementById('format'),timingEl=document.getElementById('timing');
+const startBtn=document.getElementById('start'),stopBtn=document.getElementById('stop'),switchBtn=document.getElementById('switch');
+const cameraSelect=document.getElementById('cameraSelect'),cameraWrap=document.getElementById('cameraWrap');
+const framesEl=document.getElementById('frames'),locatedEl=document.getElementById('located'),detectionsEl=document.getElementById('detections'),confirmedEl=document.getElementById('confirmed');
+const resultEl=document.getElementById('result'),formatEl=document.getElementById('format'),timingEl=document.getElementById('timing'),equivEl=document.getElementById('equiv');
 
-function setState(kind,text){
- viewport.classList.remove('scanning','success','error');statePill.className='state-pill';
- if(kind==='scanning'){viewport.classList.add('scanning');statePill.classList.add('scan')}
- if(kind==='success'){viewport.classList.add('success');statePill.classList.add('good')}
- if(kind==='error'){viewport.classList.add('error');statePill.classList.add('fail')}
- statePill.textContent=text;
-}
+function setState(kind,text){viewport.classList.remove('scanning','success','error');statePill.className='state-pill';if(kind==='scanning'){viewport.classList.add('scanning');statePill.classList.add('scan')}if(kind==='success'){viewport.classList.add('success');statePill.classList.add('good')}if(kind==='error'){viewport.classList.add('error');statePill.classList.add('fail')}statePill.textContent=text}
 function setStatus(t,c=''){statusEl.textContent=t;statusEl.className='status '+c}
 function isRear(label=''){return /back|rear|environment|trasera|trás/i.test(label)&&!/front|user|frontal/i.test(label)}
-function isUltra(label=''){return /ultra/i.test(label)}
-function rank(label=''){let s=label.toLowerCase(),v=0;if(/back|rear|environment/.test(s))v+=20;if(/wide/.test(s)&&!/ultra/.test(s))v+=8;if(/ultra/.test(s))v-=8;if(/tele/.test(s))v-=5;if(/front|user/.test(s))v-=30;return v}
-function resetCounters(){frames=located=decoded=0;framesEl.textContent=locatedEl.textContent=decodedEl.textContent='0'}
+function rank(label=''){let s=label.toLowerCase(),v=0;if(/back|rear|environment/.test(s))v+=20;if(/wide/.test(s)&&!/ultra/.test(s))v+=8;if(/ultra/.test(s))v+=4;if(/tele/.test(s))v-=5;if(/front|user/.test(s))v-=30;return v}
+function resetCounters(){frames=located=detections=confirmed=0;framesEl.textContent=locatedEl.textContent=detectionsEl.textContent=confirmedEl.textContent='0';pendingCode='';pendingCount=0}
 function ensureAudio(){try{if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume()}catch(_){}}
 function beep(){try{ensureAudio();const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.frequency.value=920;o.type='sine';g.gain.setValueAtTime(.0001,audioCtx.currentTime);g.gain.exponentialRampToValueAtTime(.18,audioCtx.currentTime+.01);g.gain.exponentialRampToValueAtTime(.0001,audioCtx.currentTime+.11);o.connect(g);g.connect(audioCtx.destination);o.start();o.stop(audioCtx.currentTime+.12)}catch(_){}}
-function successFeedback(){
- flash.classList.add('show');successCheck.classList.add('show');setState('success','✓ Código leído');setStatus('Código detectado correctamente.','ok');beep();
- setTimeout(()=>{flash.classList.remove('show');successCheck.classList.remove('show');if(running){setState('scanning',closeMode?'Buscando · modo cerca':'Buscando código…');setStatus('Escaneando… apunta al siguiente código.','warn')}},750);
+function successFeedback(){flash.classList.add('show');successCheck.classList.add('show');setState('success','✓ Código confirmado');setStatus('Lectura validada y confirmada.','ok');beep();if(navigator.vibrate)navigator.vibrate(70);setTimeout(()=>{flash.classList.remove('show');successCheck.classList.remove('show');if(running){setState('scanning','Buscando código…');setStatus('Escaneando… apunta al siguiente código.','warn')}},750)}
+
+function checksumValid(code){
+ if(!/^\d+$/.test(code))return true;
+ if(code.length!==8&&code.length!==12&&code.length!==13)return true;
+ const digits=code.split('').map(Number),check=digits.pop();let sum=0;
+ for(let i=0;i<digits.length;i++){
+   const posFromRight=digits.length-i;
+   const weight=(posFromRight%2===1)?3:1;
+   sum+=digits[i]*weight;
+ }
+ return ((10-(sum%10))%10)===check;
+}
+function canonicalInfo(code){
+ if(/^0\d{12}$/.test(code))return {canonical:code.slice(1),note:`EAN-13 ${code} ↔ UPC-A ${code.slice(1)} (equivalentes)`};
+ return {canonical:code,note:''};
 }
 
-async function permissionAndDevices(){
- const temp=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});temp.getTracks().forEach(t=>t.stop());
- const all=await navigator.mediaDevices.enumerateDevices();devices=all.filter(d=>d.kind==='videoinput');rearDevices=devices.filter(d=>isRear(d.label)).sort((a,b)=>rank(b.label)-rank(a.label));if(!rearDevices.length)rearDevices=[...devices].sort((a,b)=>rank(b.label)-rank(a.label));
- cameraSelect.innerHTML='';devices.forEach((d,i)=>{const o=document.createElement('option');o.value=d.deviceId;o.textContent=d.label||`Cámara ${i+1}`;cameraSelect.appendChild(o)});cameraWrap.style.display=devices.length>1?'block':'none';switchBtn.style.display=rearDevices.length>1?'block':'none';
- const preferred=closeMode?(rearDevices.find(d=>isUltra(d.label))||rearDevices[0]||devices[0]):(rearDevices[0]||devices[0]);if(!preferred)throw new Error('No se encontró ninguna cámara.');cameraSelect.value=preferred.deviceId;return preferred.deviceId;
-}
-
-function stopScanner(){try{if(running)Quagga.stop()}catch(_){ }running=false;activeDeviceId=null;startBtn.disabled=false;stopBtn.disabled=true;setState('', 'Cámara detenida')}
-
-async function tuneTrack(){
- try{
-   const video=document.querySelector('#interactive video');const track=video&&video.srcObject&&video.srcObject.getVideoTracks()[0];if(!track)return;
-   const caps=track.getCapabilities?track.getCapabilities():{};const advanced={};
-   if(caps.focusMode&&Array.isArray(caps.focusMode)&&caps.focusMode.includes('continuous'))advanced.focusMode='continuous';
-   if(closeMode&&caps.zoom){const min=caps.zoom.min||1,max=caps.zoom.max||1;advanced.zoom=Math.min(max,Math.max(min,1.6))}
-   if(Object.keys(advanced).length)await track.applyConstraints({advanced:[advanced]});
- }catch(_){ }
-}
-
-function startWithDevice(deviceId){
- stopScanner();errorEl.textContent='';resetCounters();startedAt=performance.now();activeDeviceId=deviceId;ensureAudio();
- const constraints={width:{min:640,ideal:closeMode?1920:1280},height:{min:480,ideal:closeMode?1080:720},facingMode:{ideal:'environment'}};if(deviceId)constraints.deviceId={exact:deviceId};
- setStatus(closeMode?'Inicializando modo cerca…':'Inicializando lector EAN/UPC…','warn');setState('scanning',closeMode?'Preparando modo cerca…':'Preparando cámara…');
- Quagga.init({inputStream:{name:'Live',type:'LiveStream',target:document.querySelector('#interactive'),constraints,area:{top:'20%',right:'3%',left:'3%',bottom:'20%'},singleChannel:false},locator:{patchSize:closeMode?'small':'medium',halfSample:!closeMode},numOfWorkers:0,frequency:12,locate:true,decoder:{readers:['ean_reader','ean_8_reader','upc_reader','upc_e_reader','code_128_reader','code_39_reader','i2of5_reader']}},err=>{
-   if(err){errorEl.textContent=err.message||String(err);setStatus('No se pudo iniciar el lector.','bad');setState('error','Error de cámara');return}
-   Quagga.start();running=true;startBtn.disabled=true;stopBtn.disabled=false;setStatus(closeMode?'Modo cerca activo. Mantén visible TODO el código.':'Escaneando… mantén el código dentro del recuadro.','warn');setState('scanning',closeMode?'Buscando · modo cerca':'Buscando código…');setTimeout(tuneTrack,350);
- });
-}
+async function permissionAndDevices(){const temp=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});temp.getTracks().forEach(t=>t.stop());const all=await navigator.mediaDevices.enumerateDevices();devices=all.filter(d=>d.kind==='videoinput');rearDevices=devices.filter(d=>isRear(d.label)).sort((a,b)=>rank(b.label)-rank(a.label));if(!rearDevices.length)rearDevices=[...devices].sort((a,b)=>rank(b.label)-rank(a.label));cameraSelect.innerHTML='';devices.forEach((d,i)=>{const o=document.createElement('option');o.value=d.deviceId;o.textContent=d.label||`Cámara ${i+1}`;cameraSelect.appendChild(o)});cameraWrap.style.display=devices.length>1?'block':'none';switchBtn.style.display=rearDevices.length>1?'block':'none';const preferred=rearDevices[0]||devices[0];if(!preferred)throw new Error('No se encontró ninguna cámara.');cameraSelect.value=preferred.deviceId;return preferred.deviceId}
+function stopScanner(){try{if(running)Quagga.stop()}catch(_){ }running=false;activeDeviceId=null;startBtn.disabled=false;stopBtn.disabled=true;pendingCode='';pendingCount=0;setState('','Cámara detenida')}
+async function tuneTrack(){try{const video=document.querySelector('#interactive video'),track=video&&video.srcObject&&video.srcObject.getVideoTracks()[0];if(!track)return;const caps=track.getCapabilities?track.getCapabilities():{},advanced={};if(caps.focusMode&&Array.isArray(caps.focusMode)&&caps.focusMode.includes('continuous'))advanced.focusMode='continuous';if(Object.keys(advanced).length)await track.applyConstraints({advanced:[advanced]})}catch(_){}}
+function startWithDevice(deviceId){stopScanner();errorEl.textContent='';resetCounters();startedAt=performance.now();activeDeviceId=deviceId;ensureAudio();const constraints={width:{min:640,ideal:1920},height:{min:480,ideal:1080},facingMode:{ideal:'environment'}};if(deviceId)constraints.deviceId={exact:deviceId};setStatus('Inicializando lector de alta precisión…','warn');setState('scanning','Preparando cámara…');Quagga.init({inputStream:{name:'Live',type:'LiveStream',target:document.querySelector('#interactive'),constraints,area:{top:'20%',right:'3%',left:'3%',bottom:'20%'},singleChannel:false},locator:{patchSize:'small',halfSample:false},numOfWorkers:0,frequency:12,locate:true,decoder:{readers:['ean_reader','ean_8_reader','upc_reader','upc_e_reader','code_128_reader','code_39_reader','i2of5_reader']}},err=>{if(err){errorEl.textContent=err.message||String(err);setStatus('No se pudo iniciar el lector.','bad');setState('error','Error de cámara');return}Quagga.start();running=true;startBtn.disabled=true;stopBtn.disabled=false;setStatus('Escaneando… mantén el código completo dentro del recuadro.','warn');setState('scanning','Buscando código…');setTimeout(tuneTrack,350)})}
 
 Quagga.onProcessed(data=>{if(!running)return;frames++;framesEl.textContent=String(frames);if(data&&data.boxes&&data.boxes.length){located++;locatedEl.textContent=String(located)}});
 Quagga.onDetected(data=>{
- if(!data||!data.codeResult||!data.codeResult.code)return;const code=data.codeResult.code,now=performance.now();
- if(now-lastAcceptedAt<900)return;if(code===lastCode&&now-lastAcceptedAt<2500)return;lastAcceptedAt=now;lastCode=code;decoded++;decodedEl.textContent=String(decoded);resultEl.textContent=code;formatEl.textContent='Formato: '+(data.codeResult.format||'desconocido');timingEl.textContent='Detectado en '+((now-startedAt)/1000).toFixed(2)+' s';successFeedback();
+ if(!running||!data||!data.codeResult||!data.codeResult.code)return;
+ const code=String(data.codeResult.code),format=data.codeResult.format||'desconocido',now=performance.now();
+ if(!checksumValid(code))return;
+ detections++;detectionsEl.textContent=String(detections);
+ if(code===lastAcceptedCode&&now-lastAcceptedAt<ACCEPT_COOLDOWN_MS)return;
+ if(code===pendingCode&&now-pendingAt<=CONFIRM_WINDOW_MS){pendingCount++;pendingAt=now}else{pendingCode=code;pendingFormat=format;pendingCount=1;pendingAt=now;setState('scanning','Confirmando lectura…');setStatus('Código detectado; confirmando segunda lectura…','warn')}
+ if(pendingCount<2)return;
+ lastAcceptedCode=code;lastAcceptedAt=now;pendingCode='';pendingCount=0;confirmed++;confirmedEl.textContent=String(confirmed);
+ const info=canonicalInfo(code);resultEl.textContent=info.canonical;formatEl.textContent=`Formato detectado: ${pendingFormat} · lectura bruta: ${code}`;timingEl.textContent='Confirmado en '+((now-startedAt)/1000).toFixed(2)+' s';equivEl.textContent=info.note;equivEl.classList.toggle('show',!!info.note);successFeedback();
 });
 
 startBtn.onclick=async()=>{try{ensureAudio();errorEl.textContent='';setStatus('Pidiendo permiso y buscando cámaras…','warn');setState('scanning','Buscando cámara…');const id=await permissionAndDevices();startWithDevice(id)}catch(e){stopScanner();setStatus('No se pudo abrir la cámara.','bad');setState('error','Error de cámara');errorEl.textContent=e.message||String(e)}};
 stopBtn.onclick=()=>{stopScanner();setStatus('Cámara detenida.')};
 switchBtn.onclick=()=>{if(!rearDevices.length)return;let i=rearDevices.findIndex(d=>d.deviceId===activeDeviceId);const next=rearDevices[(i+1+rearDevices.length)%rearDevices.length];cameraSelect.value=next.deviceId;startWithDevice(next.deviceId)};
 cameraSelect.onchange=()=>{if(cameraSelect.value)startWithDevice(cameraSelect.value)};
-closeModeBtn.onclick=async()=>{closeMode=!closeMode;closeModeBtn.classList.toggle('active',closeMode);closeModeBtn.textContent=closeMode?'✓ Modo código pequeño / curvo activo':'Modo código pequeño / curvo';modeNote.classList.toggle('show',closeMode);if(running||devices.length){try{const id=await permissionAndDevices();startWithDevice(id)}catch(e){errorEl.textContent=e.message||String(e)}}};
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&running)stopScanner()});
 </script>
 </body>
