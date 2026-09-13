@@ -1630,6 +1630,7 @@ class Handler(BaseHTTPRequestHandler):
         if path=='/health': return self.send_json({'ok':True,'service':'zeli-recruitment','version':'0.4'})
         if path in ['/','/index.html']: return self.send_file('index.html')
         if path in ['/admin','/admin.html']: return self.send_file('admin.html')
+        if path in ['/scanner-test','/scanner-test.html']: return self.send_file('scanner-test.html')
         if path=='/api/admin/runs':
             if not self.admin_ok(qs): return self.send_json({'error':'unauthorized'},401)
             con=db(); rows=con.execute('select id,recruiter_name,recruiter_key,role,status,created_at,updated_at,published_at from runs order by created_at desc').fetchall(); con.close(); return self.send_json([dict(x) for x in rows])
