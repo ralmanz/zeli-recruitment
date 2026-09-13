@@ -2,231 +2,111 @@
 <html lang="es">
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
 <meta name="theme-color" content="#0b0d10"/>
-<title>Zeli Lab · Scanner Test V2</title>
+<title>Zeli Lab · Scanner Test V3</title>
 <style>
-  :root { color-scheme: dark; font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-  * { box-sizing: border-box; }
-  body { margin:0; background:#0b0d10; color:#f6f7f9; }
-  main { max-width:680px; margin:auto; padding:22px 16px 40px; }
-  h1 { font-size:28px; margin:0 0 8px; }
-  p { color:#aab3bf; line-height:1.45; }
-  .card { background:#151a21; border:1px solid #262d36; border-radius:16px; padding:14px; margin-top:14px; }
-  .viewport { position:relative; border-radius:12px; overflow:hidden; background:#050607; min-height:280px; }
-  video { width:100%; min-height:280px; display:block; object-fit:cover; background:#050607; }
-  .guide { pointer-events:none; position:absolute; left:6%; right:6%; top:50%; transform:translateY(-50%); height:118px; border:2px solid rgba(255,255,255,.78); border-radius:12px; box-shadow:0 0 0 9999px rgba(0,0,0,.18); }
-  .guide::after { content:"Alinea el código aquí"; position:absolute; left:50%; bottom:-30px; transform:translateX(-50%); color:#fff; font-size:12px; white-space:nowrap; text-shadow:0 1px 5px #000; }
-  button, select { width:100%; min-height:48px; padding:12px 14px; border-radius:12px; font-weight:750; font-size:16px; margin-top:10px; }
-  button { border:0; background:#f4f7fb; color:#11151a; }
-  button.secondary { background:#252c35; color:#fff; border:1px solid #39424e; }
-  button:disabled { opacity:.45; }
-  select { color:#fff; background:#10141a; border:1px solid #39424e; }
-  #result { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:22px; font-weight:800; word-break:break-all; margin:5px 0; }
-  .small { font-size:13px; color:#9099a5; line-height:1.4; }
-  .status { font-size:14px; font-weight:650; margin-bottom:10px; }
-  .ok { color:#73e29c; }
-  .bad { color:#ff9aac; }
-  .row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-  .row button { width:100%; }
-  #cameraWrap { display:none; }
+:root{color-scheme:dark;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}*{box-sizing:border-box}body{margin:0;background:#0b0d10;color:#f6f7f9}main{max-width:680px;margin:auto;padding:22px 16px 40px}h1{font-size:28px;margin:0 0 8px}p{color:#aab3bf;line-height:1.45}.card{background:#151a21;border:1px solid #262d36;border-radius:16px;padding:14px;margin-top:14px}.small{font-size:13px;color:#9099a5;line-height:1.4}.status{font-size:14px;font-weight:650;margin-bottom:10px}.ok{color:#73e29c}.bad{color:#ff9aac}.viewport{position:relative;overflow:hidden;border-radius:12px;background:#050607;min-height:300px}.viewport video,.viewport canvas{width:100%!important;height:100%!important;min-height:300px;object-fit:cover}.viewport canvas{position:absolute;inset:0}.guide{pointer-events:none;position:absolute;z-index:20;left:5%;right:5%;top:50%;transform:translateY(-50%);height:120px;border:2px solid rgba(255,255,255,.8);border-radius:12px;box-shadow:0 0 0 9999px rgba(0,0,0,.18)}.guide:after{content:"Alinea el código aquí";position:absolute;left:50%;bottom:-30px;transform:translateX(-50%);color:#fff;font-size:12px;white-space:nowrap;text-shadow:0 1px 5px #000}button,select{width:100%;min-height:48px;padding:12px 14px;border-radius:12px;font-weight:750;font-size:16px;margin-top:10px}button{border:0;background:#f4f7fb;color:#11151a}button.secondary{background:#252c35;color:#fff;border:1px solid #39424e}button:disabled{opacity:.45}select{color:#fff;background:#10141a;border:1px solid #39424e}.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.row button{width:100%}#result{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:22px;font-weight:800;word-break:break-all;margin:5px 0}.metric{display:flex;justify-content:space-between;gap:10px;border-top:1px solid #252c34;padding:9px 0}.metric:first-child{border-top:0}#cameraWrap{display:none}
 </style>
-<script src="https://unpkg.com/@zxing/browser@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.12.1/dist/quagga.min.js"></script>
 </head>
 <body>
 <main>
-  <div class="small">Zeli Lab · prueba aislada · V2 ZXing</div>
-  <h1>Prueba de escaneo</h1>
-  <p>Esta versión usa ZXing directamente. En iPhone 13 Pro Max también permite cambiar entre cámaras si Safari escoge una lente poco conveniente.</p>
+<div class="small">Zeli Lab · prueba aislada · V3 Quagga2</div>
+<h1>Prueba de escaneo</h1>
+<p>Esta versión usa un lector especializado en códigos 1D de retail (EAN/UPC). No tienes que tomar una foto: debe detectar el código automáticamente.</p>
 
-  <div class="card">
-    <div id="status" class="status">Listo. Toca “Activar cámara”.</div>
-    <div class="viewport">
-      <video id="video" muted playsinline></video>
-      <div class="guide"></div>
-    </div>
+<div class="card">
+<div id="status" class="status">Listo. Toca “Activar cámara”.</div>
+<div id="interactive" class="viewport"><div class="guide"></div></div>
+<div id="cameraWrap"><label class="small" for="cameraSelect">Cámara</label><select id="cameraSelect"></select></div>
+<div class="row"><button id="start">Activar cámara</button><button id="stop" class="secondary" disabled>Detener</button></div>
+<button id="switch" class="secondary" style="display:none">Probar otra cámara trasera</button>
+<div id="error" class="small bad" style="margin-top:10px"></div>
+</div>
 
-    <div id="cameraWrap">
-      <label class="small" for="cameraSelect">Cámara</label>
-      <select id="cameraSelect"></select>
-    </div>
+<div class="card">
+<div class="small">Último código leído</div>
+<div id="result">—</div>
+<div id="format" class="small"></div>
+<div id="timing" class="small"></div>
+</div>
 
-    <div class="row">
-      <button id="start">Activar cámara</button>
-      <button id="stop" class="secondary" disabled>Detener</button>
-    </div>
-    <button id="switch" class="secondary" style="display:none">Probar otra cámara trasera</button>
-    <div id="error" class="small bad" style="margin-top:10px"></div>
-  </div>
+<div class="card">
+<div class="metric"><span class="small">Frames analizados</span><strong id="frames">0</strong></div>
+<div class="metric"><span class="small">Posibles códigos localizados</span><strong id="located">0</strong></div>
+<div class="metric"><span class="small">Lecturas decodificadas</span><strong id="decoded">0</strong></div>
+</div>
 
-  <div class="card">
-    <div class="small">Último código leído</div>
-    <div id="result">—</div>
-    <div id="format" class="small"></div>
-    <div id="timing" class="small"></div>
-  </div>
-
-  <div class="card">
-    <div class="small">Para probar bien</div>
-    <p class="small" style="margin-bottom:0">Empieza con un código EAN/UPC grande y plano. Muévelo lentamente entre unos 10–30 cm del teléfono. Si la imagen está borrosa de cerca, aléjala un poco o usa “Probar otra cámara trasera”. No necesitas tomar una foto: la lectura debe aparecer sola.</p>
-  </div>
+<div class="card"><p class="small" style="margin:0">Para el primer intento usa el mismo EAN-13 de la foto anterior. Muévelo lentamente entre 10–30 cm. Si “Frames analizados” aumenta pero “Lecturas decodificadas” sigue en 0, ya sabemos que la cámara funciona y el problema está puramente en la decodificación.</p></div>
 </main>
-
 <script>
-let reader = null;
-let controls = null;
-let devices = [];
-let rearDevices = [];
-let activeDeviceId = null;
-let startedAt = 0;
-let lastText = '';
-let lastReadAt = 0;
+let running=false, devices=[], rearDevices=[], activeDeviceId=null;
+let frames=0, located=0, decoded=0, startedAt=0, lastCode='';
+const statusEl=document.getElementById('status'), errorEl=document.getElementById('error');
+const startBtn=document.getElementById('start'), stopBtn=document.getElementById('stop'), switchBtn=document.getElementById('switch');
+const cameraSelect=document.getElementById('cameraSelect'), cameraWrap=document.getElementById('cameraWrap');
+const framesEl=document.getElementById('frames'), locatedEl=document.getElementById('located'), decodedEl=document.getElementById('decoded');
+const resultEl=document.getElementById('result'), formatEl=document.getElementById('format'), timingEl=document.getElementById('timing');
 
-const video = document.getElementById('video');
-const startBtn = document.getElementById('start');
-const stopBtn = document.getElementById('stop');
-const switchBtn = document.getElementById('switch');
-const cameraSelect = document.getElementById('cameraSelect');
-const cameraWrap = document.getElementById('cameraWrap');
-const statusEl = document.getElementById('status');
-const errorEl = document.getElementById('error');
-const resultEl = document.getElementById('result');
-const formatEl = document.getElementById('format');
-const timingEl = document.getElementById('timing');
+function setStatus(t,c=''){statusEl.textContent=t;statusEl.className='status '+c}
+function isRear(label=''){return /back|rear|environment|trasera|trás/i.test(label)&&!/front|user|frontal/i.test(label)}
+function rank(label=''){let s=label.toLowerCase(),v=0;if(/back|rear|environment/.test(s))v+=20;if(/wide/.test(s)&&!/ultra/.test(s))v+=8;if(/ultra/.test(s))v-=8;if(/tele/.test(s))v-=5;if(/front|user/.test(s))v-=30;return v}
+function resetCounters(){frames=located=decoded=0;framesEl.textContent=locatedEl.textContent=decodedEl.textContent='0'}
 
-function setStatus(text, cls='') {
-  statusEl.textContent = text;
-  statusEl.className = 'status ' + cls;
+async function permissionAndDevices(){
+ const temp=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}},audio:false});
+ temp.getTracks().forEach(t=>t.stop());
+ const all=await navigator.mediaDevices.enumerateDevices();
+ devices=all.filter(d=>d.kind==='videoinput');
+ rearDevices=devices.filter(d=>isRear(d.label)).sort((a,b)=>rank(b.label)-rank(a.label));
+ if(!rearDevices.length)rearDevices=[...devices].sort((a,b)=>rank(b.label)-rank(a.label));
+ cameraSelect.innerHTML='';devices.forEach((d,i)=>{const o=document.createElement('option');o.value=d.deviceId;o.textContent=d.label||`Cámara ${i+1}`;cameraSelect.appendChild(o)});
+ cameraWrap.style.display=devices.length>1?'block':'none';switchBtn.style.display=rearDevices.length>1?'block':'none';
+ const preferred=rearDevices[0]||devices[0];if(!preferred)throw new Error('No se encontró ninguna cámara.');cameraSelect.value=preferred.deviceId;return preferred.deviceId;
 }
 
-function isRear(label='') {
-  return /back|rear|environment|trasera|trás/i.test(label) && !/front|user|frontal/i.test(label);
+function stopScanner(){
+ try{if(running)Quagga.stop()}catch(_){ }
+ running=false;activeDeviceId=null;startBtn.disabled=false;stopBtn.disabled=true;
 }
 
-function cameraRank(label='') {
-  const s = label.toLowerCase();
-  let score = 0;
-  if (/back|rear|environment|trasera|trás/.test(s)) score += 20;
-  if (/triple|dual wide|wide camera/.test(s)) score += 8;
-  if (/ultra/.test(s)) score -= 8;
-  if (/telephoto|tele/.test(s)) score -= 5;
-  if (/front|user|frontal/.test(s)) score -= 30;
-  return score;
+function startWithDevice(deviceId){
+ stopScanner();errorEl.textContent='';resetCounters();startedAt=performance.now();activeDeviceId=deviceId;
+ const constraints={width:{min:640,ideal:1280},height:{min:480,ideal:720},facingMode:{ideal:'environment'}};
+ if(deviceId)constraints.deviceId={exact:deviceId};
+ setStatus('Inicializando lector EAN/UPC…');
+ Quagga.init({
+   inputStream:{name:'Live',type:'LiveStream',target:document.querySelector('#interactive'),constraints,
+     area:{top:'22%',right:'4%',left:'4%',bottom:'22%'},singleChannel:false},
+   locator:{patchSize:'medium',halfSample:true},
+   numOfWorkers:0,
+   frequency:12,
+   locate:true,
+   decoder:{readers:['ean_reader','ean_8_reader','upc_reader','upc_e_reader','code_128_reader','code_39_reader','i2of5_reader']}
+ },err=>{
+   if(err){errorEl.textContent=err.message||String(err);setStatus('No se pudo iniciar Quagga2.','bad');return}
+   Quagga.start();running=true;startBtn.disabled=true;stopBtn.disabled=false;setStatus('Escaneando… mantén el código dentro del recuadro.');
+ });
 }
 
-async function requestPermissionAndList() {
-  const temp = await navigator.mediaDevices.getUserMedia({
-    video: {
-      facingMode: { ideal: 'environment' },
-      width: { ideal: 1920 },
-      height: { ideal: 1080 }
-    },
-    audio: false
-  });
-  temp.getTracks().forEach(t => t.stop());
-
-  devices = await ZXingBrowser.BrowserCodeReader.listVideoInputDevices();
-  rearDevices = devices.filter(d => isRear(d.label));
-  if (!rearDevices.length) rearDevices = [...devices].sort((a,b) => cameraRank(b.label)-cameraRank(a.label));
-  else rearDevices.sort((a,b) => cameraRank(b.label)-cameraRank(a.label));
-
-  cameraSelect.innerHTML = '';
-  devices.forEach((d, i) => {
-    const option = document.createElement('option');
-    option.value = d.deviceId;
-    option.textContent = d.label || `Cámara ${i+1}`;
-    cameraSelect.appendChild(option);
-  });
-  cameraWrap.style.display = devices.length > 1 ? 'block' : 'none';
-  switchBtn.style.display = rearDevices.length > 1 ? 'block' : 'none';
-
-  const preferred = rearDevices[0] || devices[0];
-  if (!preferred) throw new Error('No se encontró ninguna cámara.');
-  cameraSelect.value = preferred.deviceId;
-  return preferred.deviceId;
-}
-
-async function stopScanner() {
-  try { if (controls) controls.stop(); } catch (_) {}
-  controls = null;
-  activeDeviceId = null;
-  try {
-    if (video.srcObject) video.srcObject.getTracks().forEach(t => t.stop());
-    video.srcObject = null;
-  } catch (_) {}
-  startBtn.disabled = false;
-  stopBtn.disabled = true;
-}
-
-async function beginWithDevice(deviceId) {
-  await stopScanner();
-  errorEl.textContent = '';
-  if (!window.ZXingBrowser) throw new Error('ZXing no cargó. Recarga la página.');
-
-  reader = new ZXingBrowser.BrowserMultiFormatReader();
-  activeDeviceId = deviceId;
-  startedAt = performance.now();
-  setStatus('Escaneando… apunta al código y mantén el teléfono estable.');
-
-  controls = await reader.decodeFromVideoDevice(deviceId, video, (result, error) => {
-    if (!result) return;
-    const text = result.getText ? result.getText() : String(result.text || result);
-    const now = performance.now();
-    if (text === lastText && now - lastReadAt < 1500) return;
-    lastText = text;
-    lastReadAt = now;
-
-    let format = '';
-    try {
-      const f = result.getBarcodeFormat ? result.getBarcodeFormat() : null;
-      format = f != null ? String(f) : '';
-    } catch (_) {}
-
-    resultEl.textContent = text;
-    formatEl.textContent = format ? `Formato: ${format}` : 'Código detectado';
-    timingEl.textContent = `Primera lectura: ${((now-startedAt)/1000).toFixed(2)} s desde que se activó esta cámara`;
-    setStatus('Código detectado automáticamente.', 'ok');
-    if (navigator.vibrate) navigator.vibrate(70);
-  });
-
-  startBtn.disabled = true;
-  stopBtn.disabled = false;
-}
-
-async function startScanner() {
-  try {
-    setStatus('Pidiendo permiso y buscando la mejor cámara…');
-    errorEl.textContent = '';
-    const id = await requestPermissionAndList();
-    await beginWithDevice(id);
-  } catch (err) {
-    await stopScanner();
-    setStatus('No se pudo iniciar el escáner.', 'bad');
-    errorEl.textContent = err?.message || String(err);
-  }
-}
-
-async function switchRearCamera() {
-  if (!rearDevices.length) return;
-  const current = rearDevices.findIndex(d => d.deviceId === activeDeviceId);
-  const next = rearDevices[(current + 1 + rearDevices.length) % rearDevices.length];
-  cameraSelect.value = next.deviceId;
-  try { await beginWithDevice(next.deviceId); }
-  catch (err) { errorEl.textContent = err?.message || String(err); }
-}
-
-startBtn.onclick = startScanner;
-stopBtn.onclick = async () => { await stopScanner(); setStatus('Cámara detenida.'); };
-switchBtn.onclick = switchRearCamera;
-cameraSelect.onchange = async () => {
-  if (!cameraSelect.value) return;
-  try { await beginWithDevice(cameraSelect.value); }
-  catch (err) { errorEl.textContent = err?.message || String(err); }
-};
-
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden && controls) stopScanner();
+Quagga.onProcessed(data=>{
+ if(!running)return;frames++;framesEl.textContent=String(frames);
+ if(data&&data.boxes&&data.boxes.length){located++;locatedEl.textContent=String(located)}
 });
+Quagga.onDetected(data=>{
+ if(!data||!data.codeResult||!data.codeResult.code)return;
+ const code=data.codeResult.code;decoded++;decodedEl.textContent=String(decoded);
+ resultEl.textContent=code;formatEl.textContent='Formato: '+(data.codeResult.format||'desconocido');
+ timingEl.textContent='Detectado en '+((performance.now()-startedAt)/1000).toFixed(2)+' s';
+ if(code!==lastCode&&navigator.vibrate)navigator.vibrate(70);lastCode=code;setStatus('Código detectado automáticamente.','ok');
+});
+
+startBtn.onclick=async()=>{try{errorEl.textContent='';setStatus('Pidiendo permiso y buscando cámaras…');const id=await permissionAndDevices();startWithDevice(id)}catch(e){stopScanner();setStatus('No se pudo abrir la cámara.','bad');errorEl.textContent=e.message||String(e)}};
+stopBtn.onclick=()=>{stopScanner();setStatus('Cámara detenida.')};
+switchBtn.onclick=()=>{if(!rearDevices.length)return;let i=rearDevices.findIndex(d=>d.deviceId===activeDeviceId);const next=rearDevices[(i+1+rearDevices.length)%rearDevices.length];cameraSelect.value=next.deviceId;startWithDevice(next.deviceId)};
+cameraSelect.onchange=()=>{if(cameraSelect.value)startWithDevice(cameraSelect.value)};
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&running)stopScanner()});
 </script>
 </body>
 </html>
