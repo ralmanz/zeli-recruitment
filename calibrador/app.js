@@ -23,6 +23,10 @@ function App() {
   const tab = s.tab && channels.some((c) => c.id === s.tab) ? s.tab : channels[0].id;
 
   useEffect(() => () => Object.values(timers.current).forEach(clearTimeout), []);
+  useEffect(() => {
+    if (!s.done) return;
+    later('scrollDone', 520, scrollKit);
+  }, [s.done]);
   useEffect(() => { if (s.sent) scrollKit(); }, [s.sent]);
 
   const later = (key, ms, fn) => { clearTimeout(timers.current[key]); timers.current[key] = setTimeout(fn, ms); };
@@ -110,7 +114,7 @@ function App() {
         onDismiss=${() => setS((x) => ({ ...x, dismissed: true }))} />
     </div>
 
-    ${s.sent && html`<${Kit} kitRef=${kitRef} brief=${brief} p=${p} channels=${channels} tab=${tab} copied=${s.copied}
+    ${s.done && html`<${Kit} kitRef=${kitRef} brief=${brief} p=${p} channels=${channels} tab=${tab} copied=${s.copied} sent=${s.sent}
         onTab=${(id) => setS((x) => ({ ...x, tab: id, copied: null }))} onCopy=${copy} />`}
 
     ${RESEARCH && html`
@@ -234,19 +238,19 @@ function LivePanel({ p, brief, onConfirm, onDismiss }) {
   </aside>`;
 }
 
-function Kit({ kitRef, brief, p, channels, tab, copied, onTab, onCopy }) {
+function Kit({ kitRef, brief, p, channels, tab, copied, sent, onTab, onCopy }) {
   const active = channels.find((c) => c.id === tab);
   return html`
   <section class="kit" ref=${kitRef} aria-label="Perfil maestro y canales">
     <div class="kit-head">
-      <div class="label light">Lo que recibe el reclutador</div>
+      <div class="label light">${sent ? 'Lo que recibe el reclutador' : 'Su perfil calibrado'}</div>
       <h2>Un perfil maestro. Cada canal sale de él.</h2>
     </div>
 
     <article class="master" aria-label="Perfil maestro">
       <div class="master-top">
         <div class="master-id">
-          <div class="master-badges"><span class="label">Perfil maestro · v1</span><span class="approved">Aprobado por el cliente</span></div>
+          <div class="master-badges"><span class="label">Perfil maestro · v1</span>${sent && html`<span class="approved">Aprobado por el cliente</span>`}
           <h3>${brief.role}</h3>
           <div class="muted-p">${p.zone} · ${p.budget ? 'hasta ' + brief.meta.salaryCap : 'salario por confirmar'} · ${p.n} reacciones, ${p.reasonsN} razones</div>
         </div>
