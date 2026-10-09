@@ -48,6 +48,15 @@ h1, h2, h3 { margin: 0; }
 .pick-role { font: 700 15px var(--display); color: var(--ink); }
 .pick-quote { font-size: 13px; line-height: 1.35; color: var(--muted-2); }
 
+/* Audience */
+.audience { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; }
+.audience-pill { display: inline-flex; background: var(--accent); color: #fff; font: 600 12px var(--body); letter-spacing: .12em; text-transform: uppercase; border-radius: 999px; padding: 6px 12px; }
+.audience p { margin: 0; max-width: 520px; color: var(--muted); font-size: 16px; line-height: 1.45; }
+.handoff { display: flex; flex-direction: column; gap: 18px; scroll-margin-top: 16px; }
+.handoff-line { display: flex; align-items: center; gap: 14px; }
+.handoff-line::before, .handoff-line::after { content: ''; flex: 1; height: 1px; background: #D5D8D0; }
+.handoff-line span { flex: none; background: #fff; border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px; color: var(--ink-2); font: 600 14px var(--body); text-align: center; }
+
 /* Hero */
 .hero { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 20px; }
 .hero-text { flex: 1 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
@@ -157,6 +166,7 @@ h1, h2, h3 { margin: 0; }
 @keyframes rise { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: none; } }
 .kit-head { display: flex; flex-direction: column; gap: 6px; margin-bottom: 22px; }
 .kit h2 { font: 700 clamp(26px, 3.4vw, 38px)/1.1 var(--display); letter-spacing: -.02em; }
+.kit-note { margin: 4px 0 0; max-width: 640px; color: var(--dark-muted); font-size: 16px; line-height: 1.45; }
 .master { background: #fff; color: var(--ink); border-radius: 22px; padding: 24px; display: flex; flex-direction: column; gap: 22px; animation: rise .8s .15s cubic-bezier(.2,.85,.2,1) both; }
 .master-top { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; align-items: flex-start; }
 .master-id { display: flex; flex-direction: column; gap: 6px; flex: 1 1 380px; min-width: 0; }
@@ -244,6 +254,7 @@ h1, h2, h3 { margin: 0; }
   .panel-body { font-size: 14px; }
   .ex { align-items: flex-start; }
   .chip { max-width: 100%; text-align: left; }
+  .handoff-line span { font-size: 13px; padding: 8px 12px; }
 }
 @media (hover: none) {
   .btn:hover, .pick:hover, .chip:hover { transform: none; }

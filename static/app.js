@@ -80,6 +80,11 @@ function App() {
   <div class="page"><div class="wrap">
     <${Picker} briefId=${briefId} onPick=${pickBrief} />
 
+    <div class="audience">
+      <div class="audience-pill">Para el cliente</div>
+      <p>Quien contrata reacciona aquí. Sí, no, y por qué.</p>
+    </div>
+
     <header class="hero">
       <div class="hero-text">
         <div class="eyebrow">${RESEARCH ? 'Prototipo · PR-01 calibración de perfil' : `Búsqueda: ${brief.role.toLowerCase()} · ${brief.sector}`}</div>
@@ -129,8 +134,12 @@ function App() {
         onDismiss=${() => setS((x) => ({ ...x, dismissed: true }))} />
     </div>
 
-    ${s.done && html`<${Kit} kitRef=${kitRef} brief=${brief} p=${p} channels=${channels} tab=${tab} copied=${s.copied} sent=${s.sent}
-        onTab=${(id) => setS((x) => ({ ...x, tab: id, copied: null }))} onCopy=${copy} />`}
+    ${s.done && html`
+      <div class="handoff" id="perfil-maestro">
+        <div class="handoff-line"><span>A partir de aquí, para el reclutador</span></div>
+        <${Kit} kitRef=${kitRef} brief=${brief} p=${p} channels=${channels} tab=${tab} copied=${s.copied} sent=${s.sent}
+          onTab=${(id) => setS((x) => ({ ...x, tab: id, copied: null }))} onCopy=${copy} />
+      </div>`}
 
     ${RESEARCH && html`
       <section class="research" aria-label="Antes y después">
@@ -256,10 +265,11 @@ function LivePanel({ p, brief, onConfirm, onDismiss }) {
 function Kit({ kitRef, brief, p, channels, tab, copied, sent, onTab, onCopy }) {
   const active = channels.find((c) => c.id === tab);
   return html`
-  <section class="kit" id="perfil-maestro" ref=${kitRef} aria-label="Perfil maestro y canales">
+  <section class="kit" ref=${kitRef} aria-label="Perfil maestro y canales">
     <div class="kit-head">
-      <div class="label light">${sent ? 'Lo que recibe el reclutador' : 'Su perfil calibrado'}</div>
-      <h2>Un perfil maestro. Cada canal sale de él.</h2>
+      <div class="label light">Para el reclutador</div>
+      <h2>Perfil maestro y textos de búsqueda</h2>
+      <p class="kit-note">Esta parte es para usted. No hace falta mostrársela al cliente.</p>
     </div>
 
     <article class="master" aria-label="Perfil maestro">
