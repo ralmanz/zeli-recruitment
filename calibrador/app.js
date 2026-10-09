@@ -97,7 +97,7 @@ function App() {
               <div class="done-title">${s.sent ? 'Enviado a su reclutador' : 'Perfil calibrado'}</div>
               <p class="muted-p">${s.sent
                 ? 'Su reclutador ya tiene el perfil y el porqué de cada decisión. Si algo cambia, reaccione de nuevo y todo lo derivado se actualiza.'
-                : `${p.n} reacciones y ${p.reasonsN} razones capturadas. Revise el resumen y envíelo.`}</p>
+                : `${p.n} reacciones y ${p.reasonsN} razones capturadas. Abajo está su perfil maestro.`}</p>
               <div class="summary">${p.summary}</div>
               <div class="btn-row">
                 ${!s.sent
@@ -250,7 +250,7 @@ function Kit({ kitRef, brief, p, channels, tab, copied, sent, onTab, onCopy }) {
     <article class="master" aria-label="Perfil maestro">
       <div class="master-top">
         <div class="master-id">
-          <div class="master-badges"><span class="label">Perfil maestro · v1</span>${sent && html`<span class="approved">Aprobado por el cliente</span>`}
+          <div class="master-badges"><span class="label">Perfil maestro · v1</span>${sent && html`<span class="approved">Aprobado por el cliente</span>`}</div>
           <h3>${brief.role}</h3>
           <div class="muted-p">${p.zone} · ${p.budget ? 'hasta ' + brief.meta.salaryCap : 'salario por confirmar'} · ${p.n} reacciones, ${p.reasonsN} razones</div>
         </div>
