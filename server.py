@@ -25,11 +25,7 @@ ROOT = Path(__file__).resolve().parent
 DATA_DIR = Path(os.getenv('ZELI_DATA_DIR') or os.getenv('RAILWAY_VOLUME_MOUNT_PATH') or (ROOT / 'data'))
 DB_PATH = Path(os.getenv('ZELI_DB_PATH') or (DATA_DIR / 'recruitment.db'))
 STATIC = ROOT / 'static'
-ADMIN_TOKEN = os.getenv('ZELI_ADMIN_TOKEN')
-if not ADMIN_TOKEN:
-    if os.getenv('RAILWAY_ENVIRONMENT') or os.getenv('ZELI_ENV') == 'production':
-        raise RuntimeError('ZELI_ADMIN_TOKEN is required in production')
-    ADMIN_TOKEN = 'zeli-local-admin'
+ADMIN_TOKEN = os.getenv('ZELI_ADMIN_TOKEN') or ('zeli-local-admin' if not (os.getenv('RAILWAY_ENVIRONMENT') or os.getenv('ZELI_ENV') == 'production') else None)
 PORT = int(os.getenv('PORT', '8080'))
 PUBLIC_SEARCH_TIMEOUT = float(os.getenv('ZELI_SEARCH_TIMEOUT', '12'))
 USER_AGENT = os.getenv('ZELI_USER_AGENT', 'ZeliRecruitment/0.4 (+operator-supervised research)')
@@ -1606,19 +1602,47 @@ def run_payload(run_id, include_private=False):
     con.close(); return out
 
 # ---------------- HTTP ----------------
+STATIC_TYPES = {
+    '.html': 'text/html; charset=utf-8',
+    '.js': 'text/javascript; charset=utf-8',
+    '.css': 'text/css; charset=utf-8',
+    '.json': 'application/json; charset=utf-8',
+    '.svg': 'image/svg+xml',
+    '.png': 'image/png',
+    '.ico': 'image/x-icon',
+}
+
 class Handler(BaseHTTPRequestHandler):
-    server_version='ZeliRecruitment/0.4'
+    server_version='ZeliRecruitment/calibrador'
     def send_json(self,obj,status=200):
         b=json.dumps(obj,ensure_ascii=False).encode('utf-8'); self.send_response(status); self.send_header('Content-Type','application/json; charset=utf-8'); self.send_header('Content-Length',str(len(b))); self.end_headers(); self.wfile.write(b)
     def send_file(self,path,ctype='text/html; charset=utf-8'):
         p=STATIC/path
         if not p.exists(): self.send_error(404); return
         b=p.read_bytes(); self.send_response(200); self.send_header('Content-Type',ctype); self.send_header('Content-Length',str(len(b))); self.end_headers(); self.wfile.write(b)
+    def serve_static(self,path):
+        if path.startswith('/api/'):
+            return False
+        rel=path.lstrip('/')
+        if not rel:
+            return False
+        p=(STATIC/rel).resolve()
+        try:
+            p.relative_to(STATIC.resolve())
+        except ValueError:
+            return False
+        if not p.is_file():
+            return False
+        ctype=STATIC_TYPES.get(p.suffix.lower(),'application/octet-stream')
+        self.send_file(rel,ctype)
+        return True
     def body(self):
         n=int(self.headers.get('Content-Length','0')); raw=self.rfile.read(n) if n else b'{}'
         try:return json.loads(raw)
         except:return {}
     def admin_ok(self,qs=None):
+        if not ADMIN_TOKEN:
+            return False
         token=self.headers.get('X-Admin-Token') or (qs or {}).get('admin_token',[''])[0]
         return bool(token) and hmac.compare_digest(token,ADMIN_TOKEN)
     def recruiter_ok(self,run_id,qs=None):
@@ -1627,10 +1651,12 @@ class Handler(BaseHTTPRequestHandler):
         return bool(r and tok and hmac.compare_digest(tok,r['recruiter_token']))
     def do_GET(self):
         u=urlparse(self.path); path=u.path; qs=parse_qs(u.query)
-        if path=='/health': return self.send_json({'ok':True,'service':'zeli-recruitment','version':'0.4'})
+        if path=='/health': return self.send_json({'ok':True,'service':'zeli-recruitment','version':'calibrador-1'})
         if path in ['/','/index.html']: return self.send_file('index.html')
         if path in ['/admin','/admin.html']: return self.send_file('admin.html')
         if path in ['/scanner-test','/scanner-test.html']: return self.send_file('scanner-test.html')
+        if self.serve_static(path):
+            return
         if path=='/api/admin/runs':
             if not self.admin_ok(qs): return self.send_json({'error':'unauthorized'},401)
             con=db(); rows=con.execute('select id,recruiter_name,recruiter_key,role,status,created_at,updated_at,published_at from runs order by created_at desc').fetchall(); con.close(); return self.send_json([dict(x) for x in rows])
@@ -1766,7 +1792,7 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__=='__main__':
     init_db()
-    print(f'Zeli Recruitment V4 running on http://localhost:{PORT}')
-    print('Admin dashboard enabled at /admin')
+    print(f'Zeli Recruitment — Calibrador running on http://localhost:{PORT}')
+    print('Legacy operator dashboard at /admin')
     print('Source adapters:', public_search_provider() or 'public web unconfigured', '| internal pool | GitHub | Stack Exchange | OpenAlex | manual')
     ThreadingHTTPServer(('0.0.0.0',PORT),Handler).serve_forever()
