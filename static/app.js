@@ -9,6 +9,16 @@ const params = new URLSearchParams(location.search);
 const RESEARCH = params.get('research') === '1';   // ?research=1 shows the before/after research strip
 const START = BRIEFS.some((b) => b.id === params.get('b')) ? params.get('b') : BRIEFS[0].id; // ?b=contador
 
+function scrollToMaestro() {
+  const el = document.getElementById('perfil-maestro');
+  if (!el) return false;
+  let top = 0;
+  for (let node = el; node; node = node.offsetParent) top += node.offsetTop;
+  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  window.scrollTo({ top: Math.max(0, top - 12), behavior: reduce ? 'auto' : 'smooth' });
+  return true;
+}
+
 const Check = () => html`<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>`;
 const Alert = () => html`<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="insight-icon"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16.5v.01"/></svg>`;
 
@@ -25,12 +35,17 @@ function App() {
   useEffect(() => () => Object.values(timers.current).forEach(clearTimeout), []);
   useEffect(() => {
     if (!s.done) return;
-    later('scrollDone', 520, scrollKit);
+    let attempts = 0;
+    const tick = () => {
+      attempts += 1;
+      if (!scrollToMaestro() && attempts < 12) timers.current.scrollDone = setTimeout(tick, 80);
+    };
+    timers.current.scrollDone = setTimeout(tick, 60);
+    return () => clearTimeout(timers.current.scrollDone);
   }, [s.done]);
-  useEffect(() => { if (s.sent) scrollKit(); }, [s.sent]);
 
   const later = (key, ms, fn) => { clearTimeout(timers.current[key]); timers.current[key] = setTimeout(fn, ms); };
-  const scrollKit = () => { try { kitRef.current && kitRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) {} };
+  const scrollKit = () => scrollToMaestro();
 
   const pickBrief = (id) => {
     Object.values(timers.current).forEach(clearTimeout);
@@ -102,7 +117,7 @@ function App() {
               <div class="btn-row">
                 ${!s.sent
                   ? html`<button type="button" class="btn primary grow" onClick=${send}>Enviar perfil a mi reclutador</button>`
-                  : html`<button type="button" class="btn ok grow" onClick=${scrollKit}>Enviado · ver perfil maestro</button>`}
+                  : html`<button type="button" class="btn ok grow" onClick=${scrollKit}>Ver perfil maestro</button>`}
                 <button type="button" class="btn ghost" onClick=${reset}>Reiniciar</button>
               </div>
             </div>`}
@@ -241,7 +256,7 @@ function LivePanel({ p, brief, onConfirm, onDismiss }) {
 function Kit({ kitRef, brief, p, channels, tab, copied, sent, onTab, onCopy }) {
   const active = channels.find((c) => c.id === tab);
   return html`
-  <section class="kit" ref=${kitRef} aria-label="Perfil maestro y canales">
+  <section class="kit" id="perfil-maestro" ref=${kitRef} aria-label="Perfil maestro y canales">
     <div class="kit-head">
       <div class="label light">${sent ? 'Lo que recibe el reclutador' : 'Su perfil calibrado'}</div>
       <h2>Un perfil maestro. Cada canal sale de él.</h2>
