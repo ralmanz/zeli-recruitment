@@ -54,15 +54,26 @@ function App() {
     const u = new URL(location.href); u.searchParams.set('b', id); history.replaceState(null, '', u);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
-  const decide = (v) => setS((x) => (x.leaving ? x : { ...x, phase: 'reasons', verdict: v, picked: [] }));
-  const back = () => setS((x) => (x.leaving ? x : { ...x, phase: 'react', verdict: null, picked: [] }));
+  const decide = (v) => setS((x) => {
+    if (x.leaving) return x;
+    if (x.verdict === v) return x;
+    return { ...x, phase: 'reasons', verdict: v, picked: [] };
+  });
   const toggle = (ri) => setS((x) => ({ ...x, picked: x.picked.includes(ri) ? x.picked.filter((r) => r !== ri) : [...x.picked, ri] }));
   const commit = () => {
-    setS((x) => (x.leaving ? x : { ...x, decisions: [...x.decisions, { i: x.i, v: x.verdict, r: x.picked }], leaving: x.verdict }));
-    later('card', 440, () => setS((x) => {
+    setS((x) => {
+      if (x.leaving || !x.verdict) return x;
+      const last = x.i + 1 >= CARD_COUNT;
+      const next = { ...x, decisions: [...x.decisions, { i: x.i, v: x.verdict, r: x.picked }] };
+      if (last) return { ...next, i: x.i + 1, phase: 'react', verdict: null, picked: [], leaving: false, snap: false, done: true };
+      return { ...next, leaving: true };
+    });
+    later('card', 460, () => setS((x) => {
+      if (!x.leaving) return x;
       const nx = x.i + 1;
-      return { ...x, i: nx, phase: 'react', verdict: null, picked: [], leaving: null, done: nx >= CARD_COUNT };
+      return { ...x, i: nx, phase: 'react', verdict: null, picked: [], leaving: false, snap: true, done: nx >= CARD_COUNT };
     }));
+    later('snap', 500, () => setS((x) => ({ ...x, snap: false })));
   };
   const send = () => {
     if (s.sent || s.sending) return;
@@ -109,8 +120,10 @@ function App() {
           })}</div>
         </div>
         <div class="deck">
-          ${!s.done && html`<${Card} key=${brief.id + s.i} card=${brief.cards[s.i]} s=${s}
-              onYes=${() => decide('yes')} onNo=${() => decide('no')} onToggle=${toggle} onBack=${back} onCommit=${commit} />`}
+          ${!s.done && html`<${Deck} leaving=${s.leaving} snap=${s.snap} next=${brief.cards[s.i + 1] || null}>
+            <${Card} card=${brief.cards[s.i]} s=${s}
+              onYes=${() => decide('yes')} onNo=${() => decide('no')} onToggle=${toggle} onCommit=${commit} />
+          </${Deck}>`}
           ${s.done && html`
             <div class=${'card done' + (s.sending ? ' sending' : '')}>
               <div class="done-badge"><${Check} /></div>
@@ -171,45 +184,77 @@ function Picker({ briefId, onPick }) {
   </nav>`;
 }
 
-function Card({ card, s, onYes, onNo, onToggle, onBack, onCommit }) {
-  const cls = 'card ' + (s.leaving ? (s.leaving === 'yes' ? 'out-yes' : 'out-no') : 'enter');
+function Deck({ leaving, snap, next, children }) {
+  const currentRef = useRef(null);
+  const [h, setH] = useState(0);
+  useEffect(() => {
+    const el = currentRef.current;
+    if (!el) return;
+    const nextH = el.offsetHeight;
+    if (nextH && nextH !== h) setH(nextH);
+  });
+  const peek = next ? 88 : 0;
+  const shift = leaving && next && h ? -(h + 10) : 0;
+  return html`
+    <div class="carousel">
+      <div class="carousel-viewport" style=${{ height: h ? (h + (peek ? peek + 10 : 0)) + 'px' : 'auto' }}>
+        <div class=${'carousel-track' + (snap ? ' snap' : '')} style=${{ transform: 'translateY(' + shift + 'px)' }}>
+          <div ref=${currentRef}>${children}</div>
+          ${next && html`
+            <div class="peek">
+              <${Card} card=${next} s=${{ phase: 'react', verdict: null, picked: [], leaving: false }}
+                onYes=${() => {}} onNo=${() => {}} onToggle=${() => {}} onCommit=${() => {}} />
+            </div>`}
+        </div>
+      </div>
+    </div>`;
+}
+
+function Card({ card, s, onYes, onNo, onToggle, onCommit }) {
+  const chosen = s.verdict === 'yes' || s.verdict === 'no';
   const list = s.verdict === 'yes' ? card.yes : card.no;
   return html`
-  <article class=${cls}>
-    ${s.leaving === 'yes' && html`<div class="stamp yes">SÍ</div>`}
-    ${s.leaving === 'no' && html`<div class="stamp no">NO</div>`}
+  <article class="card">
     <div class="card-head">
       <div class="avatar">${card.letter}</div>
       <div class="card-titles">
         <div class="card-title">${card.title}</div>
-        <div class="card-sub">Perfil de ejemplo · ${card.company}</div>
+        <div class="card-sub">${card.company} · ${card.tenure}</div>
       </div>
     </div>
-    <dl class="fields">
-      ${card.fields.map(([k, v]) => html`<div class="field"><dt>${k}</dt><dd>${v}</dd></div>`)}
+    <div class="job">
+      <div class="job-label">Experiencia</div>
+      <ul class="job-bullets">
+        ${card.bullets.map((b) => html`<li>${b}</li>`)}
+      </ul>
+    </div>
+    <dl class="fields rich">
+      ${card.facts.map(([k, v, extra]) => html`
+        <div class="field">
+          <dt>${k}</dt>
+          <dd>${v}</dd>
+          ${extra && html`<dd class="field-extra">${extra}</dd>`}
+        </div>`)}
     </dl>
-    ${s.phase === 'react' && !s.leaving && html`
-      <div class="verdict">
-        <div class="muted-p">¿Así es la persona que busca?</div>
-        <div class="btn-row">
-          <button type="button" class="btn ghost grow" onClick=${onNo}>No es este</button>
-          <button type="button" class="btn primary grow" onClick=${onYes}>Sí, algo así</button>
-        </div>
-      </div>`}
-    ${s.phase === 'reasons' && !s.leaving && html`
-      <div class="reasons">
-        <div class="reasons-title">${s.verdict === 'yes' ? '¿Qué pesó más?' : '¿Por qué no?'} <span>Toque una o varias</span></div>
-        <div class="chips">
+    <div class="choose">
+      <p class="choose-q">¿Se ajusta a lo que busca?</p>
+      <div class="choose-row">
+        <button type="button" class=${'choose-btn no' + (s.verdict === 'no' ? ' on' : '')} onClick=${onNo}>No</button>
+        <button type="button" class=${'choose-btn yes' + (s.verdict === 'yes' ? ' on' : '')} onClick=${onYes}>Sí</button>
+      </div>
+      ${chosen && html`
+        <p class="choose-q">${s.verdict === 'yes' ? '¿Qué se ajusta?' : '¿Qué no se ajusta?'}</p>
+        <div class="choose-chips">
           ${list.map((r, ri) => {
             const on = s.picked.includes(ri);
-            return html`<button type="button" class=${'chip' + (on ? ' on' : '')} aria-pressed=${on ? 'true' : 'false'} onClick=${() => onToggle(ri)}>${r.t}</button>`;
+            return html`<button type="button" class=${'choose-chip' + (on ? ' on' : '')} aria-pressed=${on ? 'true' : 'false'} onClick=${() => onToggle(ri)}>${r.t}</button>`;
           })}
         </div>
-        <div class="btn-row">
-          <button type="button" class="btn ghost" onClick=${onBack}>Volver</button>
-          <button type="button" class="btn dark grow" onClick=${onCommit}>${s.picked.length ? `Listo (${s.picked.length})` : 'Seguir sin razón'}</button>
-        </div>
-      </div>`}
+        <div class="choose-foot">
+          <button type="button" class="choose-skip" onClick=${onCommit}>Omitir</button>
+          <button type="button" class="choose-go" onClick=${onCommit}>Siguiente</button>
+        </div>`}
+    </div>
   </article>`;
 }
 
