@@ -149,13 +149,13 @@ function CardView({ card, phase, picked, onYes, onNo, onToggle, onCommit }) {
           </div>`)}
       </dl>
       <div class="choose">
-        <p class="choose-q">¿Sirve para lo que busca?</p>
+        <p class="choose-q">¿Se ajusta a lo que busca?</p>
         <div class="choose-row">
           <button type="button" class=${'choose-btn no' + (phase === 'no' ? ' on' : '')} onClick=${onNo}>No</button>
           <button type="button" class=${'choose-btn yes' + (phase === 'yes' ? ' on' : '')} onClick=${onYes}>Sí</button>
         </div>
         ${chosen && html`
-          <p class="choose-q">${phase === 'yes' ? '¿Qué le sirve?' : '¿Qué no le sirve?'}</p>
+          <p class="choose-q">${phase === 'yes' ? '¿Qué se ajusta?' : '¿Qué no se ajusta?'}</p>
           <div class="choose-chips">
             ${list.map((t, ri) => html`
               <button type="button" class=${'choose-chip' + (picked.includes(ri) ? ' on' : '')} onClick=${() => onToggle(ri)}>${t}</button>`)}
