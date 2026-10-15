@@ -192,7 +192,7 @@ function Carousel({ leaving, snap, peekH, children, next }) {
             </div>`}
         </div>
       </div>
-      ${next && !leaving && html`<div class="peek-fade"></div>`}
+      ${''}
     </div>`;
 }
 
@@ -215,7 +215,7 @@ function Shot({ id }) {
           <${Dots} i=${i} />
         </div>
         <div style=${{ height: 12 }}></div>
-        <${Carousel} leaving=${leaving} snap=${false} peekH=${64} next=${next}>
+        <${Carousel} leaving=${leaving} snap=${false} peekH=${88} next=${next}>
           <${CardView} card=${card} phase=${leaving ? 'yes' : phase} picked=${leaving ? [0] : picked}
             onYes=${() => {}} onNo=${() => {}} onToggle=${toggle} onCommit=${() => {}} />
         </${Carousel}>
@@ -263,7 +263,7 @@ function Gallery() {
         <${Dots} i=${i} />
       </div>
       <div style=${{ height: 12 }}></div>
-      <${Carousel} leaving=${leaving} snap=${snap} peekH=${64} next=${next}>
+      <${Carousel} leaving=${leaving} snap=${snap} peekH=${88} next=${next}>
         <${CardView} card=${card} phase=${phase} picked=${picked}
           onYes=${() => { setPhase('yes'); setPicked([]); }}
           onNo=${() => { setPhase('no'); setPicked([]); }}
