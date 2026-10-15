@@ -32,6 +32,13 @@
     .choose-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 36px; }
     .choose-skip { appearance: none; border: 0; background: none; padding: 0; color: var(--muted-2); font: 500 14px var(--body); cursor: pointer; }
     .choose-go { appearance: none; border: 0; background: none; padding: 0; color: var(--accent); font: 600 15px var(--body); cursor: pointer; }
+    .carousel { position: relative; }
+    .carousel-viewport { overflow: hidden; }
+    .carousel-track { display: flex; flex-direction: column; gap: 10px; transition: transform .45s cubic-bezier(.22,.82,.2,1); }
+    .carousel-track.snap { transition: none; }
+    .peek { pointer-events: none; }
+    .peek .card { margin: 0; }
+    .peek-fade { pointer-events: none; position: absolute; left: 0; right: 0; bottom: 0; height: 28px; background: var(--bg); }
     .shot { background: var(--bg); }
     .shot .preview-block { margin: 0; }
     body.shot { background: var(--bg); }

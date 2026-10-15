@@ -1,10 +1,11 @@
 import { h, render } from './vendor/preact.module.js';
-import { useState } from './vendor/hooks.module.js';
+import { useState, useEffect, useRef } from './vendor/hooks.module.js';
 import htm from './vendor/htm.module.js';
 
 const html = htm.bind(h);
 const params = new URLSearchParams(location.search);
 const SHOT = params.get('shot');
+const DEMO = params.get('demo') === '1';
 
 const CARDS = [
   {
@@ -168,6 +169,33 @@ function CardView({ card, phase, picked, onYes, onNo, onToggle, onCommit }) {
     </article>`;
 }
 
+function Carousel({ leaving, snap, peekH, children, next }) {
+  const currentRef = useRef(null);
+  const [h, setH] = useState(0);
+  useEffect(() => {
+    const el = currentRef.current;
+    if (!el) return;
+    const nextH = el.offsetHeight;
+    if (nextH && nextH !== h) setH(nextH);
+  });
+  const peek = next ? peekH : 0;
+  const shift = leaving && next && h ? -(h + 10) : 0;
+  return html`
+    <div class="carousel">
+      <div class="carousel-viewport" style=${{ height: h ? (h + (peek ? peek + 10 : 0)) + 'px' : 'auto' }}>
+        <div class=${'carousel-track' + (snap ? ' snap' : '')} style=${{ transform: 'translateY(' + shift + 'px)' }}>
+          <div ref=${currentRef}>${children}</div>
+          ${next && html`
+            <div class="peek">
+              <${CardView} card=${next} phase="react" picked=${[]}
+                onYes=${() => {}} onNo=${() => {}} onToggle=${() => {}} onCommit=${() => {}} />
+            </div>`}
+        </div>
+      </div>
+      ${next && !leaving && html`<div class="peek-fade"></div>`}
+    </div>`;
+}
+
 function Shot({ id }) {
   const parts = id.split('-');
   const letter = parts[0];
@@ -177,6 +205,8 @@ function Shot({ id }) {
   const phase = kind === 'yes' || kind === 'no' ? kind : 'react';
   const [picked, setPicked] = useState(parts[2] === 'on' ? [0] : []);
   const toggle = (ri) => setPicked((x) => x.includes(ri) ? x.filter((r) => r !== ri) : [...x, ri]);
+  const leaving = kind === 'up';
+  const next = CARDS[i + 1];
   return html`
     <div class="preview-page preview-phone shot">
       <div class="preview-block">
@@ -185,8 +215,10 @@ function Shot({ id }) {
           <${Dots} i=${i} />
         </div>
         <div style=${{ height: 12 }}></div>
-        <${CardView} card=${card} phase=${phase} picked=${picked}
-          onYes=${() => {}} onNo=${() => {}} onToggle=${toggle} onCommit=${() => {}} />
+        <${Carousel} leaving=${leaving} snap=${false} peekH=${64} next=${next}>
+          <${CardView} card=${card} phase=${leaving ? 'yes' : phase} picked=${leaving ? [0] : picked}
+            onYes=${() => {}} onNo=${() => {}} onToggle=${toggle} onCommit=${() => {}} />
+        </${Carousel}>
       </div>
     </div>`;
 }
@@ -195,9 +227,34 @@ function Gallery() {
   const [i, setI] = useState(0);
   const [phase, setPhase] = useState('react');
   const [picked, setPicked] = useState([]);
+  const [leaving, setLeaving] = useState(false);
+  const [snap, setSnap] = useState(false);
   const card = CARDS[i];
-  const go = (n) => { setI(n); setPhase('react'); setPicked([]); };
+  const next = CARDS[i + 1];
   const toggle = (ri) => setPicked((x) => x.includes(ri) ? x.filter((r) => r !== ri) : [...x, ri]);
+  const commit = () => {
+    if (leaving || !next) return;
+    setLeaving(true);
+  };
+  useEffect(() => {
+    if (!DEMO || i !== 0) return;
+    const t1 = setTimeout(() => setPhase('yes'), 700);
+    const t2 = setTimeout(() => setPicked([0]), 1300);
+    const t3 = setTimeout(() => setLeaving(true), 1900);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+  }, [i]);
+  useEffect(() => {
+    if (!leaving) return;
+    const t = setTimeout(() => {
+      setSnap(true);
+      setI((n) => n + 1);
+      setPhase('react');
+      setPicked([]);
+      setLeaving(false);
+      requestAnimationFrame(() => requestAnimationFrame(() => setSnap(false)));
+    }, 460);
+    return () => clearTimeout(t);
+  }, [leaving]);
   return html`
     <div class="page"><div class="preview-page preview-phone">
       <p class="preview-banner">Vista previa · el calibrador no cambió</p>
@@ -206,15 +263,13 @@ function Gallery() {
         <${Dots} i=${i} />
       </div>
       <div style=${{ height: 12 }}></div>
-      <${CardView} card=${card} phase=${phase} picked=${picked}
-        onYes=${() => { setPhase('yes'); setPicked([]); }}
-        onNo=${() => { setPhase('no'); setPicked([]); }}
-        onToggle=${toggle}
-        onCommit=${() => go(Math.min(CARDS.length - 1, i + 1))} />
-      <div class="choose-foot" style=${{ marginTop: 16 }}>
-        <button type="button" class="choose-skip" disabled=${i === 0} onClick=${() => go(i - 1)}>Anterior</button>
-        <button type="button" class="choose-skip" disabled=${i === CARDS.length - 1} onClick=${() => go(i + 1)}>Otra carta</button>
-      </div>
+      <${Carousel} leaving=${leaving} snap=${snap} peekH=${64} next=${next}>
+        <${CardView} card=${card} phase=${phase} picked=${picked}
+          onYes=${() => { setPhase('yes'); setPicked([]); }}
+          onNo=${() => { setPhase('no'); setPicked([]); }}
+          onToggle=${toggle}
+          onCommit=${commit} />
+      </${Carousel}>
     </div></div>`;
 }
 
