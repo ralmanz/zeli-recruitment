@@ -122,7 +122,8 @@ function Dots({ i }) {
   return html`<div class="dots">${CARDS.map((_, ix) => html`<span class=${'dot' + (ix === i ? ' cur' : ix < i ? ' past' : '')}></span>`)}</div>`;
 }
 
-function CardView({ card, phase, picked, onYes, onNo, onToggle, onBack }) {
+function CardView({ card, phase, picked, onYes, onNo, onToggle, onCommit }) {
+  const chosen = phase === 'yes' || phase === 'no';
   const list = phase === 'yes' ? card.yes : card.no;
   return html`
     <article class="card">
@@ -147,35 +148,34 @@ function CardView({ card, phase, picked, onYes, onNo, onToggle, onBack }) {
             ${extra && html`<dd class="field-extra">${extra}</dd>`}
           </div>`)}
       </dl>
-      ${phase === 'react' && html`
-        <div class="verdict">
-          <div class="muted-p">¿Así es la persona que busca?</div>
-          <div class="btn-row">
-            <button type="button" class="btn ghost grow" onClick=${onNo}>No es este</button>
-            <button type="button" class="btn primary grow" onClick=${onYes}>Sí, algo así</button>
-          </div>
-        </div>`}
-      ${phase !== 'react' && html`
-        <div class="reasons">
-          <div class="reasons-title">${phase === 'yes' ? '¿Qué pesó más?' : '¿Por qué no?'} <span>Toque una o varias</span></div>
-          <div class="chips">
+      <div class="choose">
+        <p class="choose-q">¿Sirve para lo que busca?</p>
+        <div class="choose-row">
+          <button type="button" class=${'choose-btn no' + (phase === 'no' ? ' on' : '')} onClick=${onNo}>No</button>
+          <button type="button" class=${'choose-btn yes' + (phase === 'yes' ? ' on' : '')} onClick=${onYes}>Sí</button>
+        </div>
+        ${chosen && html`
+          <p class="choose-q">${phase === 'yes' ? '¿Qué le sirve?' : '¿Qué no le sirve?'}</p>
+          <div class="choose-chips">
             ${list.map((t, ri) => html`
-              <button type="button" class=${'chip' + (picked.includes(ri) ? ' on' : '')} onClick=${() => onToggle(ri)}>${t}</button>`)}
+              <button type="button" class=${'choose-chip' + (picked.includes(ri) ? ' on' : '')} onClick=${() => onToggle(ri)}>${t}</button>`)}
           </div>
-          <div class="btn-row">
-            <button type="button" class="btn ghost" onClick=${onBack}>Volver</button>
-            <button type="button" class="btn dark grow">${picked.length ? `Listo (${picked.length})` : 'Seguir sin razón'}</button>
-          </div>
-        </div>`}
+          <div class="choose-foot">
+            <button type="button" class="choose-skip" onClick=${onCommit}>Omitir</button>
+            <button type="button" class="choose-go" onClick=${onCommit}>Siguiente</button>
+          </div>`}
+      </div>
     </article>`;
 }
 
 function Shot({ id }) {
-  const [letter, kind] = id.includes('-') ? id.split('-') : [id, 'react'];
+  const parts = id.split('-');
+  const letter = parts[0];
+  const kind = parts[1] || 'react';
   const card = CARDS.find((c) => c.letter === letter) || CARDS[0];
   const i = CARDS.indexOf(card);
   const phase = kind === 'yes' || kind === 'no' ? kind : 'react';
-  const [picked, setPicked] = useState([]);
+  const [picked, setPicked] = useState(parts[2] === 'on' ? [0] : []);
   const toggle = (ri) => setPicked((x) => x.includes(ri) ? x.filter((r) => r !== ri) : [...x, ri]);
   return html`
     <div class="preview-page preview-phone shot">
@@ -186,7 +186,7 @@ function Shot({ id }) {
         </div>
         <div style=${{ height: 12 }}></div>
         <${CardView} card=${card} phase=${phase} picked=${picked}
-          onYes=${() => {}} onNo=${() => {}} onToggle=${toggle} onBack=${() => {}} />
+          onYes=${() => {}} onNo=${() => {}} onToggle=${toggle} onCommit=${() => {}} />
       </div>
     </div>`;
 }
@@ -210,10 +210,10 @@ function Gallery() {
         onYes=${() => { setPhase('yes'); setPicked([]); }}
         onNo=${() => { setPhase('no'); setPicked([]); }}
         onToggle=${toggle}
-        onBack=${() => { setPhase('react'); setPicked([]); }} />
-      <div class="btn-row" style=${{ marginTop: 14 }}>
-        <button type="button" class="btn ghost grow" disabled=${i === 0} onClick=${() => go(i - 1)}>Anterior</button>
-        <button type="button" class="btn ghost grow" disabled=${i === CARDS.length - 1} onClick=${() => go(i + 1)}>Siguiente</button>
+        onCommit=${() => go(Math.min(CARDS.length - 1, i + 1))} />
+      <div class="choose-foot" style=${{ marginTop: 16 }}>
+        <button type="button" class="choose-skip" disabled=${i === 0} onClick=${() => go(i - 1)}>Anterior</button>
+        <button type="button" class="choose-skip" disabled=${i === CARDS.length - 1} onClick=${() => go(i + 1)}>Otra carta</button>
       </div>
     </div></div>`;
 }

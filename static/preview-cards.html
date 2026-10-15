@@ -20,8 +20,18 @@
     .field-extra { font-size: 14px; font-weight: 400; color: var(--muted); margin-top: 2px; }
     .preview-phone .card { padding: 16px; }
     .preview-phone .card-title { font-size: 19px; }
-    .preview-phone .btn-row { flex-direction: column; }
-    .preview-phone .btn-row .btn { width: 100%; }
+    .choose { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line-2); display: flex; flex-direction: column; gap: 10px; }
+    .choose-q { margin: 0; font-size: 14px; line-height: 1.35; color: var(--muted); }
+    .choose-row { display: flex; gap: 8px; }
+    .choose-btn { appearance: none; flex: 1; min-height: 40px; border-radius: 10px; border: 1.5px solid var(--chip-line); background: #fff; color: var(--ink); font: 600 15px var(--body); cursor: pointer; }
+    .choose-btn.yes.on { background: var(--ok-soft); border-color: #7BB892; color: var(--ok-ink); }
+    .choose-btn.no.on { background: var(--no-soft); border-color: #E2B198; color: var(--no-ink); }
+    .choose-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .choose-chip { appearance: none; border: 1.5px solid var(--chip-line); background: #fff; color: var(--ink); border-radius: 999px; padding: 7px 12px; min-height: 34px; font: 500 14px var(--body); cursor: pointer; }
+    .choose-chip.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+    .choose-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 36px; }
+    .choose-skip { appearance: none; border: 0; background: none; padding: 0; color: var(--muted-2); font: 500 14px var(--body); cursor: pointer; }
+    .choose-go { appearance: none; border: 0; background: none; padding: 0; color: var(--accent); font: 600 15px var(--body); cursor: pointer; }
     .shot { background: var(--bg); }
     .shot .preview-block { margin: 0; }
     body.shot { background: var(--bg); }
