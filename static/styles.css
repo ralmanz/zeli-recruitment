@@ -249,14 +249,22 @@ h1, h2, h3 { margin: 0; }
 .r-big { font: 700 22px/1.2 var(--display); } .r-small { font-size: 15px; line-height: 1.45; color: #3E424B; }
 
 @media (max-width: 720px) {
-  .page { padding: 16px 14px calc(32px + env(safe-area-inset-bottom)); }
-  .wrap { gap: 18px; }
+  .page { padding: 20px 14px calc(32px + env(safe-area-inset-bottom)); }
+  .wrap { gap: 26px; }
   .hero { align-items: stretch; }
   .hero h1 { font-size: 32px; }
   .lede { font-size: 16px; }
   .brief-quote { flex: 1 1 100%; }
-  .picker-row { margin: 0 -14px; padding: 0 14px 8px; -webkit-overflow-scrolling: touch; }
-  .pick { width: min(240px, 78vw); }
+  .picker { gap: 8px; }
+  .picker-label { font-size: 11px; letter-spacing: .14em; }
+  .picker-row { margin: 0 -14px; padding: 0 14px 2px; -webkit-overflow-scrolling: touch; }
+  .pick { width: auto; max-width: none; padding: 9px 14px; border-radius: 12px; box-shadow: none; }
+  .pick.on { box-shadow: 0 0 0 2px var(--accent-soft); }
+  .pick-role { font-size: 14px; }
+  .pick-quote { display: none; }
+  .audience { gap: 6px; }
+  .audience-pill { font-size: 11px; padding: 5px 10px; letter-spacing: .1em; }
+  .audience p { font-size: 14px; max-width: 280px; }
   .row { flex-direction: column; gap: 16px; }
   .deck-col, .live { flex: 1 1 auto; width: 100%; }
   .deck { min-height: 0; }
