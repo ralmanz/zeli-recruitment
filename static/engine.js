@@ -10,7 +10,8 @@ export function initialState() {
     phase: 'react',       // 'react' (sí/no buttons) | 'reasons' (chips)
     verdict: null,        // 'yes' | 'no' while choosing reasons
     picked: [],           // indexes of selected reason chips
-    leaving: null,        // 'yes' | 'no' while the card animates out
+    leaving: false,       // true while the stack slides up to the next example
+    snap: false,          // skip the slide-back when the next card becomes current
     decisions: [],        // [{ i, v: 'yes'|'no', r: [reasonIndex] }]  <- source of truth
     confirmed: false,     // client confirmed the detected hidden constraint
     dismissed: false,     // client rejected it
