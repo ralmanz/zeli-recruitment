@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Vista previa · cartas de ejemplo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+  <style>
+    .preview-page { max-width: 390px; margin: 0 auto; padding: 16px 14px 48px; }
+    .preview-banner { margin: 0 0 18px; font: 600 12px var(--body); letter-spacing: .1em; text-transform: uppercase; color: var(--muted-2); text-align: center; }
+    .preview-block { margin-bottom: 36px; }
+    .card-note {
+      margin: 0 0 16px;
+      background: var(--bg);
+      border-radius: 14px;
+      padding: 14px 16px;
+      font-size: 16px;
+      line-height: 1.5;
+      color: var(--ink-2);
+    }
+    .fields.rich { grid-template-columns: 1fr; }
+    .preview-phone .card { padding: 16px; }
+    .preview-phone .card-title { font-size: 19px; }
+    .preview-phone .btn-row { flex-direction: column; }
+    .preview-phone .btn-row .btn { width: 100%; }
+    .shot { background: var(--bg); }
+    .shot .preview-block { margin: 0; }
+    body.shot { background: var(--bg); }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="./preview-cards.js"></script>
+</body>
+</html>
