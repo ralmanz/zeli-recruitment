@@ -4,19 +4,23 @@ import htm from './vendor/htm.module.js';
 
 const html = htm.bind(h);
 const params = new URLSearchParams(location.search);
-const SHOT = params.get('shot'); // A | A-yes | A-no | B | ...
+const SHOT = params.get('shot');
 
 const CARDS = [
   {
     letter: 'A',
     title: 'Ejecutiva de ventas',
-    company: 'tienda de electrónica',
-    headline: 'Piso de venta · 2 años',
-    note: 'Atiende el mostrador: celulares, accesorios, quien entra. Cierra y se acaba — no tiene clientes que le sigan ni CRM. Le ha pedido a su jefa pasar a cuentas; le dicen que aprende rápido.',
+    company: 'Tienda de electrónica',
+    tenure: '2 años',
+    bullets: [
+      'Venta en piso a consumidor (celulares y accesorios)',
+      'Sin cartera propia',
+      'Sin CRM',
+      'Busca pasar a cuentas'
+    ],
     facts: [
-      ['Dónde vive', 'Bethania. A Costa del Este son unos 20 min.'],
-      ['A quién le vende', 'Consumidor, en tienda. Sin cartera propia.'],
-      ['Inglés', 'Básico: saluda y entiende precios, no una reunión.'],
+      ['Ubicación', 'Bethania, Ciudad de Panamá', '20 min a Costa del Este'],
+      ['Idiomas', 'Inglés · Básico'],
       ['Aspiración', '$1,200']
     ],
     yes: ['Vive cerca', 'Puede aprender'],
@@ -25,13 +29,16 @@ const CARDS = [
   {
     letter: 'B',
     title: 'Representante de ventas',
-    company: 'distribuidora de consumo masivo',
-    headline: 'Cuentas de supermercado · 6 años',
-    note: 'Vende a supermercados y minimarkets del interior. Trae relaciones con compradores de cadena, no con plantas. Buena trayectoria B2B, pero el producto es consumo, no industrial.',
+    company: 'Distribuidora de consumo masivo',
+    tenure: '6 años',
+    bullets: [
+      'Venta B2B a supermercados y minimarkets',
+      'Cartera parcial de compradores de cadena',
+      'Consumo masivo, no industrial'
+    ],
     facts: [
-      ['Dónde vive', 'David, Chiriquí. A Costa del Este son unas 6 horas.'],
-      ['A quién le vende', 'Consumo masivo B2B. Cartera parcial.'],
-      ['Inglés', 'Intermedio: se defiende por correo, se traba en una llamada.'],
+      ['Ubicación', 'David, Chiriquí', '6 horas a Costa del Este'],
+      ['Idiomas', 'Inglés · Intermedio'],
       ['Aspiración', '$1,800']
     ],
     yes: ['Experiencia B2B', 'Buena trayectoria'],
@@ -40,13 +47,16 @@ const CARDS = [
   {
     letter: 'C',
     title: 'Ejecutiva de cuentas clave',
-    company: 'suministros industriales',
-    headline: 'Cuentas industriales · 5 años',
-    note: 'Maneja unas 40 cuentas de plantas y talleres que le siguen. Visita, habla de stock y plazos, y cierra en inglés con compradores de casa matriz. Vive a diez minutos de la oficina.',
+    company: 'Suministros industriales',
+    tenure: '5 años',
+    bullets: [
+      'Cartera propia, unos 40 clientes',
+      'Venta industrial B2B (plantas y talleres)',
+      'Visitas de stock y plazos'
+    ],
     facts: [
-      ['Dónde vive', 'Costa del Este. Unos 10 min a la oficina.'],
-      ['A quién le vende', 'Industrial B2B. Cartera propia, unos 40 clientes.'],
-      ['Inglés', 'Avanzado: llamadas con compradores.'],
+      ['Ubicación', 'Costa del Este', '10 min a la oficina'],
+      ['Idiomas', 'Inglés · Avanzado'],
       ['Aspiración', '$2,000']
     ],
     yes: ['Trae cartera propia', 'Conoce el sector industrial', 'Inglés avanzado', 'Vive cerca'],
@@ -55,13 +65,16 @@ const CARDS = [
   {
     letter: 'D',
     title: 'Gerente regional de ventas',
-    company: 'agroquímicos',
-    headline: 'Gerencia regional · 9 años',
-    note: 'Dirige un equipo y una zona. Ya no cierra cuenta por cuenta: arma plan, revisa números, viaja. De Arraiján a Costa del Este son 45–60 min. Pide $3,500.',
+    company: 'Agroquímicos',
+    tenure: '9 años',
+    bullets: [
+      'Equipo y zona a cargo',
+      'Plan comercial y viajes (no cierre de cuenta)',
+      'Agro B2B'
+    ],
     facts: [
-      ['Dónde vive', 'Arraiján, Panamá Oeste. 45–60 min a Costa del Este.'],
-      ['A quién le vende', 'Agro B2B, a escala regional. Equipo a cargo.'],
-      ['Inglés', 'Avanzado.'],
+      ['Ubicación', 'Arraiján, Panamá Oeste', '45–60 min a Costa del Este'],
+      ['Idiomas', 'Inglés · Avanzado'],
       ['Aspiración', '$3,500']
     ],
     yes: ['Liderazgo', 'Inglés avanzado'],
@@ -70,14 +83,17 @@ const CARDS = [
   {
     letter: 'E',
     title: 'Vendedor técnico',
-    company: 'distribución ferretera',
-    headline: 'Ruta ferretera · 4 años',
-    note: 'Recorre ferreterías y constructoras chicas. Habla de calibre, marca y plazo, no de marca de consumo. Lleva el seguimiento en Salesforce, y tiene clientes que le recompran.',
+    company: 'Distribución ferretera',
+    tenure: '4 años',
+    bullets: [
+      'Venta técnica a ferreterías y constructoras',
+      'Clientes que recompran',
+      'Salesforce'
+    ],
     facts: [
-      ['Dónde vive', 'San Francisco. A Costa del Este son unos 15 min.'],
-      ['A quién le vende', 'Ferretería B2B, venta técnica. Clientes que le recompran.'],
-      ['Inglés', 'Intermedio: se defiende, no cierra una negociación.'],
-      ['Herramientas', 'Salesforce · aspiración $1,900']
+      ['Ubicación', 'San Francisco', '15 min a Costa del Este'],
+      ['Idiomas', 'Inglés · Intermedio'],
+      ['Aspiración', '$1,900']
     ],
     yes: ['Trae cartera propia', 'Domina un CRM', 'Venta técnica'],
     no: ['Poca experiencia', 'Inglés insuficiente']
@@ -85,13 +101,16 @@ const CARDS = [
   {
     letter: 'F',
     title: 'Ejecutivo comercial',
-    company: 'materiales de construcción',
-    headline: 'Obra y ferretería · 7 años',
-    note: 'Vende cemento, varilla y acabados a ferreterías y a obra. Conoce el sector. Los clientes son de la empresa: no trae una cartera que se mude con él.',
+    company: 'Materiales de construcción',
+    tenure: '7 años',
+    bullets: [
+      'Venta B2B a ferreterías y obra',
+      'Cemento, varilla y acabados',
+      'Sin cartera propia (clientes de la empresa)'
+    ],
     facts: [
-      ['Dónde vive', 'La Chorrera. 40–50 min a Costa del Este, más en hora pico.'],
-      ['A quién le vende', 'Construcción B2B. Sin cartera propia.'],
-      ['Inglés', 'Básico: lee una cotización, no una llamada.'],
+      ['Ubicación', 'La Chorrera', '40–50 min a Costa del Este'],
+      ['Idiomas', 'Inglés · Básico'],
       ['Aspiración', '$1,900']
     ],
     yes: ['Sector correcto', 'Experiencia sólida'],
@@ -103,7 +122,7 @@ function Dots({ i }) {
   return html`<div class="dots">${CARDS.map((_, ix) => html`<span class=${'dot' + (ix === i ? ' cur' : ix < i ? ' past' : '')}></span>`)}</div>`;
 }
 
-function CardView({ card, i, phase, picked, onYes, onNo, onToggle, onBack }) {
+function CardView({ card, phase, picked, onYes, onNo, onToggle, onBack }) {
   const list = phase === 'yes' ? card.yes : card.no;
   return html`
     <article class="card">
@@ -111,12 +130,22 @@ function CardView({ card, i, phase, picked, onYes, onNo, onToggle, onBack }) {
         <div class="avatar">${card.letter}</div>
         <div class="card-titles">
           <div class="card-title">${card.title}</div>
-          <div class="card-sub">${card.company} · ${card.headline}</div>
+          <div class="card-sub">${card.company} · ${card.tenure}</div>
         </div>
       </div>
-      <p class="card-note">${card.note}</p>
+      <div class="job">
+        <div class="job-label">Experiencia</div>
+        <ul class="job-bullets">
+          ${card.bullets.map((b) => html`<li>${b}</li>`)}
+        </ul>
+      </div>
       <dl class="fields rich">
-        ${card.facts.map(([k, v]) => html`<div class="field"><dt>${k}</dt><dd>${v}</dd></div>`)}
+        ${card.facts.map(([k, v, extra]) => html`
+          <div class="field">
+            <dt>${k}</dt>
+            <dd>${v}</dd>
+            ${extra && html`<dd class="field-extra">${extra}</dd>`}
+          </div>`)}
       </dl>
       ${phase === 'react' && html`
         <div class="verdict">
@@ -156,7 +185,7 @@ function Shot({ id }) {
           <${Dots} i=${i} />
         </div>
         <div style=${{ height: 12 }}></div>
-        <${CardView} card=${card} i=${i} phase=${phase} picked=${picked}
+        <${CardView} card=${card} phase=${phase} picked=${picked}
           onYes=${() => {}} onNo=${() => {}} onToggle=${toggle} onBack=${() => {}} />
       </div>
     </div>`;
@@ -177,7 +206,7 @@ function Gallery() {
         <${Dots} i=${i} />
       </div>
       <div style=${{ height: 12 }}></div>
-      <${CardView} card=${card} i=${i} phase=${phase} picked=${picked}
+      <${CardView} card=${card} phase=${phase} picked=${picked}
         onYes=${() => { setPhase('yes'); setPicked([]); }}
         onNo=${() => { setPhase('no'); setPicked([]); }}
         onToggle=${toggle}
